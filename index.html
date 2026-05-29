@@ -7,831 +7,406 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
-:root {
-  --ink: #0D3B36; --mint: #8FF2C2; --mint-soft: #E8FBF1; --mint-mid: #C7F4DD;
-  --green-mid: #1F6F5C; --paper: #FAFAF7; --muted: #6B7B78;
-  --rule: #0D3B361A; --red: #C0392B; --amber: #B45309;
-}
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; }
-body { font-family: 'Inter', sans-serif; background: #F0EFEA; color: var(--ink); min-height: 100vh; }
-.app { display: flex; flex-direction: column; min-height: 100vh; }
-
-.topbar {
-  background: var(--ink); padding: 0 28px; height: 54px;
-  display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
-}
-.brand { display: flex; align-items: center; gap: 10px; }
-.brand-mark {
-  width: 30px; height: 30px; border-radius: 50%; background: var(--mint);
-  display: grid; place-items: center; color: var(--ink);
-  font-family: 'Manrope'; font-weight: 800; font-size: 13px;
-}
-.brand-name { font-family: 'Manrope'; font-weight: 700; font-size: 14px; color: var(--paper); }
-.brand-name small { font-weight: 400; font-size: 10px; color: var(--mint); letter-spacing: .12em; text-transform: uppercase; margin-left: 6px; }
-.topbar-right { font-family: 'JetBrains Mono', monospace; font-size: 9.5px; color: rgba(255,255,255,.45); letter-spacing: .08em; }
-
-.main { display: flex; flex: 1; overflow: hidden; }
-
-/* ── SIDEBAR ─────────────────────────────────────────────────── */
-.sidebar {
-  width: 380px; flex-shrink: 0; background: var(--paper);
-  border-right: 1px solid var(--rule); display: flex; flex-direction: column; overflow-y: auto;
-}
-.sidebar-inner { padding: 22px 22px 32px; display: flex; flex-direction: column; gap: 18px; }
-
-.section-head {
-  font-family: 'JetBrains Mono', monospace; font-size: 9px;
-  letter-spacing: .18em; text-transform: uppercase; color: var(--green-mid); margin-bottom: 8px;
-}
-.upload-zone {
-  border: 1.5px dashed #0D3B3640; border-radius: 12px; padding: 20px 16px;
-  text-align: center; cursor: pointer; transition: all .18s; background: #fff; position: relative;
-}
-.upload-zone:hover, .upload-zone.drag { border-color: var(--mint); background: var(--mint-soft); }
-.upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
-.upload-icon { font-size: 24px; margin-bottom: 6px; }
-.upload-label { font-size: 12.5px; font-weight: 500; }
-.upload-hint { font-size: 11px; color: var(--muted); margin-top: 3px; }
-
-.file-list { display: flex; flex-direction: column; gap: 5px; }
-.file-chip {
-  display: flex; align-items: center; gap: 8px;
-  background: var(--mint-soft); border: 1px solid var(--mint); border-radius: 8px; padding: 6px 10px;
-}
-.file-chip-icon { font-size: 14px; }
-.file-chip-name { font-size: 11px; font-weight: 500; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-chip-size { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--muted); }
-.file-chip-del { border: none; background: none; cursor: pointer; color: var(--muted); font-size: 14px; padding: 0 2px; line-height: 1; }
-.file-chip-del:hover { color: var(--red); }
-
-.field { display: flex; flex-direction: column; gap: 5px; }
-.field label { font-size: 11.5px; font-weight: 600; }
-.field textarea, .field input[type=text], .field select {
-  border: 1px solid #0D3B3625; border-radius: 8px; padding: 9px 12px;
-  font-family: 'Inter', sans-serif; font-size: 12px; color: var(--ink);
-  background: #fff; resize: vertical; outline: none; transition: border-color .15s; width: 100%;
-}
-.field textarea:focus, .field input:focus, .field select:focus { border-color: var(--mint); }
-.field-hint { font-size: 10.5px; color: var(--muted); }
-
-.btn-generate {
-  background: var(--ink); color: var(--mint); border: none; border-radius: 10px;
-  padding: 12px 20px; font-family: 'Manrope', sans-serif; font-weight: 700; font-size: 13.5px;
-  cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all .18s;
-}
-.btn-generate:hover:not(:disabled) { background: var(--green-mid); }
-.btn-generate:disabled { opacity: .5; cursor: not-allowed; }
-.spinner { width: 14px; height: 14px; border: 2px solid rgba(143,242,194,.3); border-top-color: var(--mint); border-radius: 50%; animation: spin .7s linear infinite; display: inline-block; }
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.status-bar { border-radius: 8px; padding: 10px 13px; font-size: 11.5px; line-height: 1.55; display: none; }
-.status-bar.show { display: block; }
-.status-bar.info  { background: var(--mint-soft); border: 1px solid var(--mint); color: var(--green-mid); }
-.status-bar.error { background: #FEF2F2; border: 1px solid #FECACA; color: var(--red); }
-
-/* ── PREVIEW PANE ────────────────────────────────────────────── */
-.preview-pane { flex: 1; display: flex; flex-direction: column; background: #E5E5E2; overflow: hidden; }
-.preview-toolbar {
-  background: var(--paper); border-bottom: 1px solid var(--rule); padding: 10px 20px;
-  display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
-}
-.preview-title { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; }
-.preview-actions { display: flex; gap: 8px; }
-.btn-sm {
-  border: 1px solid #0D3B3625; background: #fff; color: var(--ink); border-radius: 7px; padding: 5px 12px;
-  font-size: 11.5px; font-weight: 600; font-family: 'Inter', sans-serif; cursor: pointer;
-  display: flex; align-items: center; gap: 5px; transition: all .15s;
-}
-.btn-sm:hover:not(:disabled) { border-color: var(--mint); background: var(--mint-soft); }
-.btn-sm.primary { background: var(--ink); color: var(--mint); border-color: var(--ink); }
-.btn-sm.primary:hover:not(:disabled) { background: var(--green-mid); border-color: var(--green-mid); }
-.btn-sm:disabled { opacity: .4; cursor: not-allowed; }
-.mini-spin { width: 11px; height: 11px; border: 2px solid rgba(143,242,194,.3); border-top-color: var(--mint); border-radius: 50%; animation: spin .7s linear infinite; display: inline-block; }
-
-.preview-scroll { flex: 1; overflow: auto; padding: 24px; }
-.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 10px; color: var(--muted); }
-.empty-state-icon { font-size: 40px; opacity: .4; }
-.empty-state-text { font-size: 13px; }
-
-/* ── OUTPUT CARDS ────────────────────────────────────────────── */
-.spec-card {
-  background: white; border-radius: 12px; border: 1px solid var(--rule); overflow: hidden; margin-bottom: 16px;
-}
-.spec-card-header {
-  background: var(--mint-soft); border-bottom: 1px solid var(--mint); padding: 12px 16px;
-  display: flex; align-items: center; justify-content: space-between;
-}
-.spec-card-title { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--green-mid); font-weight: 600; letter-spacing: .06em; }
-.spec-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 9px; }
-.spec-row { display: grid; grid-template-columns: 130px 1fr; gap: 8px; align-items: start; }
-.spec-label { font-family: 'JetBrains Mono', monospace; font-size: 9.5px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; padding-top: 1px; }
-.spec-value { font-size: 12px; color: var(--ink); line-height: 1.5; }
-.spec-tag { display: inline-flex; background: var(--mint-soft); border: 1px solid var(--mint-mid); border-radius: 4px; padding: 1px 6px; font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--green-mid); margin: 1px; }
-.comp-block { background: #F0EFEA; border-radius: 6px; padding: 8px 10px; margin-bottom: 4px; }
-.comp-code { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; color: var(--green-mid); }
-.comp-label { font-size: 11.5px; font-weight: 600; color: var(--ink); margin-top: 2px; }
-.comp-rncp { font-size: 10.5px; color: var(--muted); line-height: 1.5; margin-top: 4px; }
-
-.file-card { background: white; border-radius: 12px; border: 1px solid var(--rule); overflow: hidden; margin-bottom: 12px; }
-.file-card-header {
-  background: var(--ink); color: var(--mint); padding: 10px 14px;
-  display: flex; align-items: center; justify-content: space-between;
-}
-.file-card-name { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: .06em; }
-.file-card-badge { font-family: 'JetBrains Mono', monospace; font-size: 9px; background: rgba(143,242,194,.15); border: 1px solid rgba(143,242,194,.3); padding: 2px 8px; border-radius: 999px; }
-.code-preview {
-  background: #F0EFEA; margin: 12px; border-radius: 8px; padding: 10px 12px;
-  font-family: 'JetBrains Mono', monospace; font-size: 10.5px; line-height: 1.6;
-  color: var(--ink); max-height: 120px; overflow: hidden; white-space: pre-wrap; word-break: break-all;
-  position: relative;
-}
-.code-preview::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 30px; background: linear-gradient(transparent, #F0EFEA); }
-.file-card-footer { padding: 8px 14px; border-top: 1px solid var(--rule); display: flex; gap: 6px; }
-
-.hr { height: 1px; background: var(--rule); }
-.steps { display: flex; flex-direction: column; gap: 5px; }
-.step { display: flex; align-items: flex-start; gap: 10px; }
-.step-num {
-  width: 20px; height: 20px; border-radius: 50%; background: var(--mint-soft); border: 1px solid var(--mint);
-  font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500;
-  color: var(--green-mid); display: grid; place-items: center; flex-shrink: 0; margin-top: 1px;
-}
-.step-text { font-size: 11.5px; line-height: 1.5; }
-.step-text b { color: var(--green-mid); }
+:root{--ink:#0D3B36;--mint:#8FF2C2;--mint-soft:#E8FBF1;--mint-mid:#C7F4DD;--green:#1F6F5C;--paper:#FAFAF7;--muted:#6B7B78;--rule:rgba(13,59,54,.1);--red:#C0392B;}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;font-family:'Inter',sans-serif;background:#F0EFEA;color:var(--ink);}
+.app{display:flex;flex-direction:column;min-height:100vh;}
+.topbar{background:var(--ink);padding:0 28px;height:54px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.brand{display:flex;align-items:center;gap:10px;}
+.brand-mark{width:30px;height:30px;border-radius:50%;background:var(--mint);display:grid;place-items:center;color:var(--ink);font-family:'Manrope';font-weight:800;font-size:13px;}
+.brand-name{font-family:'Manrope';font-weight:700;font-size:14px;color:var(--paper);}
+.brand-name small{font-weight:400;font-size:10px;color:var(--mint);letter-spacing:.12em;text-transform:uppercase;margin-left:6px;}
+.topbar-right{font-family:'JetBrains Mono',monospace;font-size:9px;color:rgba(255,255,255,.4);letter-spacing:.08em;}
+.stepper{background:var(--paper);border-bottom:1px solid var(--rule);padding:0 28px;display:flex;align-items:center;height:48px;flex-shrink:0;gap:0;}
+.step-item{display:flex;align-items:center;gap:8px;padding:0 16px 0 0;}
+.step-item:not(:last-child)::after{content:"›";color:rgba(13,59,54,.2);font-size:18px;margin-left:8px;}
+.step-dot{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;flex-shrink:0;transition:all .2s;}
+.step-dot.done{background:var(--mint);color:var(--ink);}
+.step-dot.active{background:var(--ink);color:var(--mint);}
+.step-dot.idle{background:rgba(13,59,54,.08);color:var(--muted);}
+.step-label{font-size:11.5px;font-weight:500;}
+.step-label.active{color:var(--ink);font-weight:700;}
+.step-label.idle{color:var(--muted);}
+.step-label.done{color:var(--green);}
+.main{flex:1;display:flex;overflow:hidden;}
+.screen{display:none;flex:1;flex-direction:column;overflow:hidden;}
+.screen.visible{display:flex;}
+/* Phase 1 */
+.ingest-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:40px 20px;}
+.ingest-card{background:var(--paper);border-radius:16px;border:1px solid var(--rule);width:100%;max-width:560px;padding:36px 40px;display:flex;flex-direction:column;gap:22px;}
+.ingest-title{font-family:'Manrope',sans-serif;font-weight:800;font-size:22px;line-height:1.2;}
+.ingest-title span{color:var(--green);}
+.ingest-sub{font-size:13px;color:var(--muted);line-height:1.6;}
+.upload-zone{border:1.5px dashed rgba(13,59,54,.25);border-radius:12px;padding:28px 20px;text-align:center;cursor:pointer;transition:all .18s;background:#fff;position:relative;}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--mint);background:var(--mint-soft);}
+.upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+.upload-icon{font-size:28px;margin-bottom:8px;}
+.upload-label{font-size:13px;font-weight:600;}
+.upload-hint{font-size:11.5px;color:var(--muted);margin-top:4px;}
+.file-chip{display:flex;align-items:center;gap:8px;background:var(--mint-soft);border:1px solid var(--mint-mid);border-radius:8px;padding:8px 12px;margin-top:8px;}
+.file-chip-name{font-size:12px;font-weight:600;flex:1;}
+.file-chip-size{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);}
+.file-chip-del{border:none;background:none;cursor:pointer;color:var(--muted);font-size:16px;line-height:1;}
+.btn-primary{background:var(--ink);color:var(--mint);border:none;border-radius:10px;padding:13px 24px;font-family:'Manrope',sans-serif;font-weight:700;font-size:14px;cursor:pointer;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .18s;}
+.btn-primary:hover:not(:disabled){background:var(--green);}
+.btn-primary:disabled{opacity:.45;cursor:not-allowed;}
+/* Phase 2 */
+.select-wrap{flex:1;display:flex;overflow:hidden;}
+.select-sidebar{width:320px;background:var(--paper);border-right:1px solid var(--rule);display:flex;flex-direction:column;overflow-y:auto;flex-shrink:0;}
+.select-sidebar-inner{padding:24px 20px;display:flex;flex-direction:column;gap:14px;}
+.titre-badge{display:inline-flex;background:var(--ink);color:var(--mint);border-radius:6px;padding:3px 10px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;width:fit-content;}
+.titre-name{font-family:'Manrope',sans-serif;font-weight:700;font-size:15px;line-height:1.3;margin-top:4px;}
+.titre-sub{font-size:11px;color:var(--muted);margin-top:2px;}
+.section-head{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--green);margin-bottom:4px;}
+.bloc-list{display:flex;flex-direction:column;gap:5px;}
+.bloc-card{border:1.5px solid var(--rule);border-radius:10px;padding:11px 13px;cursor:pointer;transition:all .18s;background:#fff;}
+.bloc-card:hover{border-color:var(--mint);background:var(--mint-soft);}
+.bloc-card.selected{border-color:var(--ink);background:var(--ink);}
+.bloc-card-code{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:var(--green);}
+.bloc-card.selected .bloc-card-code{color:var(--mint);}
+.bloc-card-label{font-size:12px;font-weight:600;margin-top:3px;line-height:1.3;}
+.bloc-card.selected .bloc-card-label,.bloc-card.selected .bloc-card-comps{color:white;}
+.bloc-card-comps{font-size:10.5px;color:var(--muted);margin-top:3px;}
+.bloc-card.selected .bloc-card-comps{color:rgba(255,255,255,.6);}
+.select-preview{flex:1;display:flex;flex-direction:column;overflow:hidden;background:#F0EFEA;}
+.preview-header{background:var(--paper);border-bottom:1px solid var(--rule);padding:12px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.preview-header-lbl{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;}
+.preview-scroll{flex:1;overflow-y:auto;padding:22px;}
+.empty-bloc{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;color:var(--muted);}
+.empty-bloc-icon{font-size:36px;opacity:.3;}
+.bloc-detail{max-width:680px;display:flex;flex-direction:column;gap:14px;}
+.bloc-detail-hd{background:var(--ink);color:white;border-radius:12px;padding:18px 22px;}
+.bloc-detail-code{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--mint);letter-spacing:.1em;margin-bottom:5px;}
+.bloc-detail-title{font-family:'Manrope',sans-serif;font-weight:700;font-size:16px;line-height:1.3;}
+.bloc-detail-epreuve{font-size:12px;color:rgba(255,255,255,.55);margin-top:5px;}
+.comp-card{background:var(--paper);border:1px solid var(--rule);border-radius:10px;padding:13px 15px;}
+.comp-code{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:var(--green);margin-bottom:3px;}
+.comp-label{font-size:13px;font-weight:600;margin-bottom:5px;}
+.comp-rncp{font-size:11.5px;color:var(--muted);line-height:1.65;}
+.ctx-zone{padding:14px 22px;border-top:1px solid var(--rule);background:var(--paper);display:none;}
+.ctx-field label{font-size:11.5px;font-weight:600;display:block;margin-bottom:5px;}
+.ctx-field textarea{border:1px solid rgba(13,59,54,.2);border-radius:8px;padding:9px 12px;font-family:'Inter',sans-serif;font-size:12px;color:var(--ink);background:#fff;resize:vertical;outline:none;width:100%;transition:border-color .15s;}
+.ctx-field textarea:focus{border-color:var(--mint);}
+.ctx-hint{font-size:10.5px;color:var(--muted);margin-top:4px;display:block;}
+/* Phase 3 */
+.output-wrap{flex:1;display:flex;overflow:hidden;}
+.output-sidebar{width:290px;background:var(--paper);border-right:1px solid var(--rule);padding:22px 18px;display:flex;flex-direction:column;gap:13px;flex-shrink:0;overflow-y:auto;}
+.output-bloc-code{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:var(--green);}
+.output-bloc-title{font-size:13px;font-weight:700;line-height:1.3;margin-top:3px;}
+.output-file-item{display:flex;align-items:center;gap:8px;background:var(--mint-soft);border:1px solid var(--mint-mid);border-radius:8px;padding:7px 10px;}
+.output-file-name{font-family:'JetBrains Mono',monospace;font-size:10px;flex:1;}
+.output-file-btn{border:none;background:transparent;cursor:pointer;color:var(--green);font-size:11px;font-weight:700;font-family:'Inter',sans-serif;}
+.btn-zip{background:var(--ink);color:var(--mint);border:none;border-radius:10px;padding:11px;font-family:'Manrope',sans-serif;font-weight:700;font-size:13px;cursor:pointer;width:100%;display:flex;align-items:center;justify-content:center;gap:7px;transition:all .18s;}
+.btn-zip:hover:not(:disabled){background:var(--green);}
+.btn-zip:disabled{opacity:.45;cursor:not-allowed;}
+.btn-back{background:transparent;color:var(--muted);border:1px solid var(--rule);border-radius:8px;padding:7px;font-family:'Inter',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;width:100%;transition:all .15s;}
+.btn-back:hover{border-color:var(--mint);color:var(--ink);}
+.output-main{flex:1;overflow-y:auto;padding:22px;background:#F0EFEA;}
+.output-content{max-width:700px;display:flex;flex-direction:column;gap:13px;}
+.spec-card,.file-card{background:var(--paper);border-radius:12px;border:1px solid var(--rule);overflow:hidden;}
+.spec-card-head{background:var(--mint-soft);border-bottom:1px solid var(--mint-mid);padding:11px 15px;display:flex;align-items:center;justify-content:space-between;}
+.spec-card-title{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:var(--green);letter-spacing:.06em;}
+.spec-body{padding:13px 15px;display:flex;flex-direction:column;gap:8px;}
+.spec-row{display:grid;grid-template-columns:115px 1fr;gap:8px;align-items:start;}
+.spec-lbl{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;padding-top:2px;}
+.spec-val{font-size:12px;line-height:1.5;}
+.spec-tag{display:inline-flex;background:var(--mint-soft);border:1px solid var(--mint-mid);border-radius:3px;padding:1px 5px;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--green);margin:1px;}
+.file-card-head{background:var(--ink);color:var(--mint);padding:9px 13px;display:flex;align-items:center;justify-content:space-between;}
+.file-card-name{font-family:'JetBrains Mono',monospace;font-size:11px;}
+.file-card-badge{font-family:'JetBrains Mono',monospace;font-size:9px;background:rgba(143,242,194,.12);border:1px solid rgba(143,242,194,.3);padding:2px 7px;border-radius:999px;}
+.code-block{background:#F0EFEA;margin:11px;border-radius:7px;padding:9px 11px;font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.6;color:var(--ink);max-height:100px;overflow:hidden;white-space:pre-wrap;word-break:break-all;position:relative;}
+.code-block::after{content:"";position:absolute;bottom:0;left:0;right:0;height:25px;background:linear-gradient(transparent,#F0EFEA);}
+.file-card-foot{padding:7px 13px;border-top:1px solid var(--rule);}
+.btn-sm{border:1px solid rgba(13,59,54,.18);background:#fff;color:var(--ink);border-radius:6px;padding:4px 10px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;transition:all .15s;}
+.btn-sm:hover{border-color:var(--mint);background:var(--mint-soft);}
+.status{border-radius:8px;padding:9px 12px;font-size:11.5px;line-height:1.5;display:none;}
+.status.show{display:block;}
+.status.info{background:var(--mint-soft);border:1px solid var(--mint-mid);color:var(--green);}
+.status.error{background:#FEF2F2;border:1px solid #FECACA;color:var(--red);}
+.hr{height:1px;background:var(--rule);}
+.spinner,.mini-spin{border-radius:50%;animation:spin .7s linear infinite;display:inline-block;}
+.spinner{width:14px;height:14px;border:2px solid rgba(143,242,194,.3);border-top-color:var(--mint);}
+.mini-spin{width:11px;height:11px;border:2px solid rgba(143,242,194,.3);border-top-color:var(--mint);}
+@keyframes spin{to{transform:rotate(360deg);}}
 </style>
 </head>
 <body>
 <div class="app">
+<div class="topbar">
+  <div class="brand"><div class="brand-mark">é</div><div class="brand-name">éminéo <small>education</small></div></div>
+  <div class="topbar-right">Générateur PAC · Parcours Activation Compétences · Direction des Programmes</div>
+</div>
+<div class="stepper">
+  <div class="step-item"><div class="step-dot active" id="dot-1">1</div><span class="step-label active" id="lbl-1">Ingestion RACE</span></div>
+  <div class="step-item"><div class="step-dot idle" id="dot-2">2</div><span class="step-label idle" id="lbl-2">Sélection du bloc</span></div>
+  <div class="step-item"><div class="step-dot idle" id="dot-3">3</div><span class="step-label idle" id="lbl-3">Génération PAC</span></div>
+</div>
+<div class="main">
 
-  <!-- ── TOPBAR ─────────────────────────────────────────────── -->
-  <div class="topbar">
-    <div class="brand">
-      <div class="brand-mark">é</div>
-      <div class="brand-name">éminéo <small>education</small></div>
-    </div>
-    <div class="topbar-right">Générateur PAC · Parcours Activation Compétences · Direction des Programmes</div>
-  </div>
-
-  <div class="main">
-
-    <!-- ── SIDEBAR ───────────────────────────────────────────── -->
-    <div class="sidebar">
-      <div class="sidebar-inner">
-
-        <div>
-          <div class="section-head">Comment ça marche</div>
-          <div class="steps">
-            <div class="step"><div class="step-num">1</div><div class="step-text">Dépose le <b>référentiel RNCP</b> (PDF France Compétences) + plan de formation si disponible</div></div>
-            <div class="step"><div class="step-num">2</div><div class="step-text">Sélectionne le <b>bloc cible</b> et ajoute le contexte narratif Lumio si besoin</div></div>
-            <div class="step"><div class="step-num">3</div><div class="step-text">Clique sur <b>Générer</b> — spec JSON extraite, puis <b>⬇ ZIP</b> avec les 3 fichiers JSX</div></div>
-          </div>
-        </div>
-
-        <div class="hr"></div>
-
-        <div>
-          <div class="section-head">Documents source</div>
-          <div class="upload-zone" id="dropzone">
-            <input type="file" id="file-input" multiple accept=".pdf,.docx,.doc,.txt,.md"/>
-            <div class="upload-icon">📄</div>
-            <div class="upload-label">Glisser-déposer ou cliquer</div>
-            <div class="upload-hint">PDF référentiel RNCP · plan de formation · tous formats</div>
-          </div>
-          <div class="file-list" id="file-list" style="margin-top:8px;"></div>
-        </div>
-
-        <div class="hr"></div>
-
-        <div>
-          <div class="section-head">Configuration PAC</div>
-          <div class="field">
-            <label>Bloc certifiant cible</label>
-            <select id="bloc-select">
-              <option value="BC1">BC1 — Diagnostiquer le positionnement</option>
-              <option value="BC2">BC2 — Élaborer une stratégie marcom</option>
-              <option value="BC3">BC3 — Piloter le déploiement</option>
-              <option value="BC5" selected>BC5 — Innovation et transformation digitale</option>
-              <option value="BC6">BC6 — Autre bloc optionnel</option>
-            </select>
-          </div>
-          <div class="field" style="margin-top:10px;">
-            <label>Contexte narratif Lumio <span style="font-weight:400;color:var(--muted)">(optionnel)</span></label>
-            <textarea id="ctx-field" rows="4" placeholder="Ex : BC5 · MSMC RNCP 38504 · Avril 2027. Commanditaire : Sonia Ferracci. Tensions : RGPD prestataire IA Gen, résistance commerciale B2B, EU AI Act mai 2027…"></textarea>
-            <span class="field-hint">Moment narratif, commanditaire, tensions spécifiques. Plus c'est précis, meilleur est le spec.</span>
-          </div>
-        </div>
-
-        <div class="status-bar" id="status-bar"></div>
-
-        <button class="btn-generate" id="btn-generate" disabled>
-          <span id="btn-label">Générer le PAC</span>
-        </button>
-
+<!-- ÉCRAN 1 — INGESTION -->
+<div class="screen visible" id="screen-1">
+  <div class="ingest-wrap">
+    <div class="ingest-card">
+      <div><div class="ingest-title">Dépose le <span>référentiel RACE</span></div>
+      <div class="ingest-sub" style="margin-top:6px;">PDF officiel France Compétences · tous titres RNCP acceptés.<br>Claude extrait automatiquement tous les blocs de compétences.</div></div>
+      <div class="upload-zone" id="dropzone">
+        <input type="file" id="file-input" accept=".pdf,.docx,.doc,.txt"/>
+        <div class="upload-icon">📋</div>
+        <div class="upload-label">Glisser-déposer ou cliquer</div>
+        <div class="upload-hint">Référentiel d'activités, compétences et évaluation (RACE)</div>
       </div>
+      <div id="file-display"></div>
+      <div class="status" id="status-1"></div>
+      <button class="btn-primary" id="btn-ingest" disabled><span id="btn-ingest-lbl">Analyser le RACE</span></button>
     </div>
-
-    <!-- ── PREVIEW PANE ──────────────────────────────────────── -->
-    <div class="preview-pane">
-      <div class="preview-toolbar">
-        <span class="preview-title" id="preview-title">Aperçu · en attente de génération</span>
-        <div class="preview-actions">
-          <button class="btn-sm" id="btn-spec" disabled>Copier le spec JSON</button>
-          <button class="btn-sm primary" id="btn-zip" disabled>⬇ Télécharger le ZIP</button>
-        </div>
-      </div>
-      <div class="preview-scroll" id="preview-scroll">
-        <div class="empty-state" id="empty-state">
-          <div class="empty-state-icon">🗂</div>
-          <div class="empty-state-text">Dépose un référentiel RNCP puis clique sur Générer</div>
-        </div>
-        <div id="output-area" style="display:none;max-width:760px;margin:0 auto;"></div>
-      </div>
-    </div>
-
   </div>
 </div>
 
+<!-- ÉCRAN 2 — SÉLECTION -->
+<div class="screen" id="screen-2">
+  <div class="select-wrap">
+    <div class="select-sidebar">
+      <div class="select-sidebar-inner">
+        <div><div class="titre-badge" id="titre-badge">—</div><div class="titre-name" id="titre-name">—</div><div class="titre-sub" id="titre-sub">—</div></div>
+        <div class="hr"></div>
+        <div><div class="section-head">Blocs certifiants</div><div class="bloc-list" id="bloc-list"></div></div>
+        <div class="status" id="status-2" style="margin-top:4px;"></div>
+      </div>
+    </div>
+    <div class="select-preview">
+      <div class="preview-header">
+        <span class="preview-header-lbl" id="preview-header-lbl">Sélectionne un bloc</span>
+        <button class="btn-primary" id="btn-generate" disabled style="width:auto;padding:8px 18px;font-size:12px;"><span id="btn-gen-lbl">Générer ce bloc →</span></button>
+      </div>
+      <div class="preview-scroll" id="preview-scroll">
+        <div class="empty-bloc" id="empty-bloc"><div class="empty-bloc-icon">🗂</div><div style="font-size:13px;color:var(--muted);">Clique sur un bloc pour voir ses compétences</div></div>
+        <div id="bloc-detail" style="display:none;" class="bloc-detail"></div>
+      </div>
+      <div class="ctx-zone" id="ctx-zone">
+        <div class="ctx-field">
+          <label>Contexte narratif Lumio <span style="font-weight:400;color:var(--muted)">(optionnel)</span></label>
+          <textarea id="ctx-input" rows="2" placeholder="Moment narratif, commanditaire, tensions spécifiques…"></textarea>
+          <span class="ctx-hint">Plus c'est précis, plus le spec est ancré dans l'univers Lumio.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ÉCRAN 3 — OUTPUT -->
+<div class="screen" id="screen-3">
+  <div class="output-wrap">
+    <div class="output-sidebar">
+      <div id="output-bloc-info"></div>
+      <div class="hr"></div>
+      <div><div class="section-head">Fichiers générés</div><div id="output-file-list" style="display:flex;flex-direction:column;gap:5px;margin-top:6px;"></div></div>
+      <div class="hr"></div>
+      <button class="btn-zip" id="btn-zip" disabled>⬇ Télécharger le ZIP</button>
+      <button class="btn-back" id="btn-back">← Changer de bloc</button>
+      <div class="status" id="status-3"></div>
+    </div>
+    <div class="output-main"><div class="output-content" id="output-content"></div></div>
+  </div>
+</div>
+
+</div>
+</div>
 <script>
-// ── CONFIG ────────────────────────────────────────────────────
-// Pointe vers le proxy Vercel existant — pas de clé API dans le navigateur
-var API_URL = '/api/chat';
+var S={file:null,race:null,bloc:null,spec:null,files:{}};
+try{var sv=sessionStorage.getItem("pac_v2");if(sv){var p=JSON.parse(sv);if(p.race){S.race=p.race;}if(p.spec){S.spec=p.spec;S.files=p.files||{};}if(p.bloc)S.bloc=p.bloc;}}catch(e){}
+function save(){try{sessionStorage.setItem("pac_v2",JSON.stringify({race:S.race,spec:S.spec,files:S.files,bloc:S.bloc}));}catch(e){}}
+function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function ss(id,msg,t){var el=document.getElementById("status-"+id);el.className="status show "+(t||"info");el.innerHTML=msg;}
+function hs(id){document.getElementById("status-"+id).className="status";}
+function fmtSize(b){return b<1048576?(b/1024).toFixed(0)+" Ko":(b/1048576).toFixed(1)+" Mo";}
 
-// ── STATE ─────────────────────────────────────────────────────
-var files = [], lastSpec = null, lastFiles = {};
-
-// ── FILES ─────────────────────────────────────────────────────
-var dropzone  = document.getElementById('dropzone');
-var fileInput = document.getElementById('file-input');
-var fileList  = document.getElementById('file-list');
-var btnGen    = document.getElementById('btn-generate');
-
-function updateBtn() { btnGen.disabled = files.length === 0; }
-function fmtSize(b) { return b < 1048576 ? (b/1024).toFixed(0)+' Ko' : (b/1048576).toFixed(1)+' Mo'; }
-function fIcon(n)   { var e = n.split('.').pop().toLowerCase(); return e==='pdf'?'📋':['doc','docx'].includes(e)?'📝':'📄'; }
-
-function renderFiles() {
-  fileList.innerHTML = '';
-  files.forEach(function(f, i) {
-    var c = document.createElement('div'); c.className = 'file-chip';
-    c.innerHTML = '<span class="file-chip-icon">'+fIcon(f.name)+'</span>'
-      +'<span class="file-chip-name" title="'+f.name+'">'+f.name+'</span>'
-      +'<span class="file-chip-size">'+fmtSize(f.size)+'</span>'
-      +'<button class="file-chip-del" data-i="'+i+'">×</button>';
-    fileList.appendChild(c);
+function goTo(n){
+  [1,2,3].forEach(function(i){
+    document.getElementById("screen-"+i).className="screen"+(i===n?" visible":"");
+    var d=document.getElementById("dot-"+i),l=document.getElementById("lbl-"+i);
+    if(i<n){d.className="step-dot done";d.textContent="✓";l.className="step-label done";}
+    else if(i===n){d.className="step-dot active";d.textContent=String(i);l.className="step-label active";}
+    else{d.className="step-dot idle";d.textContent=String(i);l.className="step-label idle";}
   });
-  fileList.querySelectorAll('.file-chip-del').forEach(function(b) {
-    b.addEventListener('click', function(e) {
-      files.splice(+e.currentTarget.dataset.i, 1);
-      renderFiles(); updateBtn();
-    });
-  });
-  updateBtn();
-}
-function readB64(file) {
-  return new Promise(function(res, rej) {
-    var r = new FileReader();
-    r.onload  = function() { res(r.result.split(',')[1]); };
-    r.onerror = function() { rej(new Error('Lecture échouée')); };
-    r.readAsDataURL(file);
-  });
-}
-async function addFiles(list) {
-  for (var i = 0; i < list.length; i++) {
-    var f = list[i];
-    if (files.find(function(x) { return x.name===f.name && x.size===f.size; })) continue;
-    var b64  = await readB64(f);
-    var ext  = f.name.split('.').pop().toLowerCase();
-    var mime = ext === 'pdf' ? 'application/pdf' : (f.type || 'text/plain');
-    files.push({ name: f.name, size: f.size, b64: b64, mime: mime });
-  }
-  renderFiles();
-}
-fileInput.addEventListener('change', function(e) { if (e.target.files.length) addFiles(Array.from(e.target.files)); fileInput.value=''; });
-dropzone.addEventListener('dragover',  function(e) { e.preventDefault(); dropzone.classList.add('drag'); });
-dropzone.addEventListener('dragleave', function()  { dropzone.classList.remove('drag'); });
-dropzone.addEventListener('drop', function(e) { e.preventDefault(); dropzone.classList.remove('drag'); if (e.dataTransfer.files.length) addFiles(Array.from(e.dataTransfer.files)); });
-
-function showStatus(msg, type) { var b = document.getElementById('status-bar'); b.className='status-bar show '+(type||'info'); b.innerHTML=msg; }
-function hideStatus()           { document.getElementById('status-bar').className='status-bar'; }
-
-// ── SCHEMA SPEC ───────────────────────────────────────────────
-var SCHEMA = `Génère un objet JSON de spec PAC avec cette structure EXACTE (aucun texte autour, aucun backtick) :
-{
-  "meta": {
-    "titre_rncp": string,
-    "bloc": string,
-    "intitule_bloc": string,
-    "epreuve": string,
-    "duree_reelle_min": 210,
-    "note_reflexive": boolean
-  },
-  "moment_narratif": {
-    "date_fictive": string,
-    "titre_affaire": string,
-    "situation": string,
-    "enjeu_central": string
-  },
-  "commanditaire": { "nom": string, "role": string, "canal": "slack" },
-  "competences": [
-    {
-      "code": string,
-      "label": string,
-      "rncp": string,
-      "placeholder": string,
-      "min_mots": number,
-      "mots_cles": [string],
-      "conseil": string
-    }
-  ],
-  "livrable": { "format": string, "total_mots_min": 520, "note_reflexive_min": 100 },
-  "jury_criteres_eliminatoires": [string],
-  "documents_fictifs": [
-    { "id": string, "type": "email"|"pdf"|"note"|"article"|"memo_vocal", "expediteur": string, "objet": string, "role_narratif": string, "acte": number }
-  ],
-  "easter_egg": { "type": "whatsapp", "personnages": [string, string], "tension_revelee": string }
-}
-RÈGLES IMPÉRATIVES :
-- "rncp" de chaque compétence = texte officiel VERBATIM depuis le référentiel fourni
-- "conseil" = erreur la plus fréquente sur ce critère en jury
-- "jury_criteres_eliminatoires" = au moins 5 items précis, dont un sur les rôles/responsabilités ET un sur les indicateurs d'impact
-- Entre 3 et 8 compétences selon le bloc
-- 6 à 8 documents fictifs répartis sur les 5 actes
-- Réponds UNIQUEMENT avec le JSON brut`;
-
-// ── BUILDERS (spec → code) ────────────────────────────────────
-function buildDataJs(spec) {
-  var bloc = spec.meta.bloc;
-  var docsComments = (spec.documents_fictifs||[]).map(function(d) {
-    return '  // [Acte '+d.acte+'] '+d.id+' ('+d.type+') — '+d.role_narratif;
-  }).join('\n');
-  var compsJson = JSON.stringify((spec.competences||[]).map(function(c) {
-    return { code:c.code, label:c.label, libelle:c.label.split(' ').slice(0,2).join(' '),
-      rncp:c.rncp, placeholder:c.placeholder, min:c.min_mots,
-      motsCles:c.mots_cles, conseil:c.conseil };
-  }), null, 2);
-  var actes = [
-    {n:1,label:'Ancrage terrain',debut:0,fin:20,couleur:'#7a756c'},
-    {n:2,label:'Entrée dans l\'affaire',debut:20,fin:50,couleur:'#1b4f8a'},
-    {n:3,label:'Diagnostic',debut:50,fin:95,couleur:'#1a6641'},
-    {n:4,label:'Production',debut:95,fin:175,couleur:'#c4420f'},
-    {n:5,label:'Réflexion',debut:175,fin:210,couleur:'#7a756c'}
-  ];
-  return `// ══════════════════════════════════════════════════════════════
-//  DATA · PAC ${bloc} · ${spec.meta.titre_rncp}
-//  ${spec.moment_narratif.titre_affaire} · ${spec.moment_narratif.date_fictive}
-//  Généré par Éminéo PAC Generator — compléter le contenu narratif des documents
-// ══════════════════════════════════════════════════════════════
-
-window.LUMIO_DATA = {
-  student: {
-    name: "{{PRENOM}} {{NOM}}",
-    role: "Consultant·e — ${spec.meta.intitule_bloc}",
-    email: "{{EMAIL_ETUDIANT}}",
-    company: "Mission externe Lumio Health"
-  },
-
-  // ─── Contexte Lumio ──────────────────────────────────────────
-  contexte: {
-    title: "Fiche contexte · Lumio Health · ${spec.moment_narratif.date_fictive}",
-    body: "${spec.moment_narratif.situation.replace(/"/g, '\\"')}"
-  },
-
-  // ─── Documents fictifs ────────────────────────────────────────
-  // À compléter : ajouter le contenu narratif de chaque document
-${docsComments}
-  // TODO: Créer briefEmail, les emails/PDFs/notes/articles/mémos selon les docs ci-dessus
-
-  // ─── Messages Slack initiaux ──────────────────────────────────
-  slackMessages: {
-    initial: [
-      { from: "${spec.commanditaire.nom}", time: "08:32", text: "Bonjour — j'ai besoin de votre contribution sur le projet ${bloc} avant vendredi. Le brief est dans votre boîte mail.", read: true },
-      { from: "${spec.commanditaire.nom}", time: "08:34", text: "${spec.moment_narratif.enjeu_central.replace(/"/g, '\\"')}", read: true }
-    ],
-    delayed: []
-  }
-};
-
-window.PASS_CONFIG = {
-  bloc: '${bloc}',
-  titre: '${spec.meta.intitule_bloc}',
-  epreuve: '${spec.meta.epreuve}',
-  deadline: '${spec.moment_narratif.date_fictive} · 18h00',
-  commanditaire: '${spec.commanditaire.nom}',
-  dispositif: 'PAC',
-
-  temps: ${JSON.stringify(actes, null, 2)},
-
-  competences: ${compsJson}
-};`;
+  if(n===2&&S.race)renderBlocs();
+  if(n===3&&S.spec)renderOutput();
 }
 
-function buildLivrableJsx(spec) {
-  var bloc = spec.meta.bloc;
-  var codes = (spec.competences||[]).map(function(c){return c.code;}).join(', ');
-  var hasRefl = spec.meta.note_reflexive;
-  var criteres = (spec.jury_criteres_eliminatoires||[]).map(function(c){return '- '+c;}).join('\n');
-  var evalFormat = (spec.competences||[]).map(function(c){
-    return '### '+c.code+' — [Satisfaisant / Insuffisant / Absent]\\nUne phrase de retour précise.';
-  }).join('\\n\\n');
+// Restaurer état
+if(S.spec){goTo(3);}else if(S.race){goTo(2);}
 
-  return `// ══════════════════════════════════════════════════════════════
-//  LIVRABLE APP · PAC ${bloc} · ${spec.meta.titre_rncp}
-//  Compétences : ${codes}
-//  Généré par Éminéo PAC Generator
-// ══════════════════════════════════════════════════════════════
-
-const wc = (t) => (t||'').trim() ? (t||'').trim().split(/\\s+/).length : 0;
-const GLOBAL_MIN = ${spec.livrable.total_mots_min};
-
-const JURY_PROMPT = \`Tu es un jury certifiant ${spec.meta.titre_rncp}, ${bloc}.
-Contexte : ${spec.moment_narratif.titre_affaire} · ${spec.moment_narratif.date_fictive}.
-Enjeu : ${spec.moment_narratif.enjeu_central}
-
-Critères éliminatoires :
-${criteres}
-
-Format de réponse STRICT :
-${evalFormat}
-${hasRefl ? '\\n### Note réflexive — [Satisfaisant / Insuffisant / Absent]\\nUne phrase de retour.' : ''}
-
-## Niveau de conformité global
-**[Non conforme / Partiellement conforme / Conforme / Conforme avec distinction]**
-Synthèse en une phrase.
-
-## Question de jury
-Une seule question dérangeante, sans réponse évidente, ancrée dans les tensions du cas.\`;
-
-function LivrableApp() {
-  const cfg = window.PASS_CONFIG;
-  const COMPS = cfg ? cfg.competences : [];
-  const TABS = [...COMPS.map(c => c.code)${hasRefl ? ", 'reflexive'" : ''}];
-  const initAnswers = () => Object.fromEntries([...COMPS.map(c => [c.code, ''])${hasRefl ? ", ['reflexive', '']" : ''}]);
-
-  const [answers, setAnswers] = React.useState(() => {
-    try { const s = localStorage.getItem('pac_livrable_${bloc.toLowerCase()}'); return s ? JSON.parse(s) : initAnswers(); }
-    catch { return initAnswers(); }
-  });
-  const [tab, setTab] = React.useState(COMPS[0]?.code || '');
-  const [phase, setPhase] = React.useState('edit');
-  const [feedback, setFeedback] = React.useState('');
-  const [busy, setBusy] = React.useState(false);
-
-  const save = (code, val) => { const n = {...answers,[code]:val}; setAnswers(n); try{localStorage.setItem('pac_livrable_${bloc.toLowerCase()}',JSON.stringify(n));}catch{} };
-  const total = COMPS.reduce((s,c) => s + wc(answers[c.code]), 0);
-  const comp = COMPS.find(c => c.code === tab);
-  const isRefl = tab === 'reflexive';
-  const getColor = (code) => { const map = {'C.20-II':'#1b4f8a','C.21-II':'#c4420f','C.22-II':'#1a6641'}; return code==='reflexive'?'#5c2d8f':(map[code]||'#134547'); };
-
-  const submit = async () => {
-    if (total < GLOBAL_MIN) return;
-    setBusy(true); setPhase('submitting');
-    const content = COMPS.map(c => '### '+c.code+' — '+c.label+'\\n'+(answers[c.code]||'(vide)')).join('\\n\\n')
-      ${hasRefl ? "+ '\\n\\n### Note réflexive\\n'+(answers['reflexive']||'(vide)')" : ''};
-    try {
-      const r = await fetch('/api/chat', { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({model:'claude-sonnet-4-5',max_tokens:1000,system:JURY_PROMPT,
-          messages:[{role:'user',content:'Évalue cette contribution ${bloc} :\\n\\n'+content}]}) });
-      const d = await r.json();
-      setFeedback(d.content?.[0]?.text || 'Retour indisponible.');
-      setPhase('done');
-    } catch { setFeedback('Jury IA indisponible.'); setPhase('done'); }
-    setBusy(false);
-  };
-
-  if (phase === 'done') return (
-    <div style={{padding:24,fontFamily:'var(--font-sans)'}}>
-      <div style={{fontFamily:'var(--font-display)',fontSize:16,fontWeight:600,marginBottom:16}}>Retour jury · {cfg.bloc}</div>
-      <div style={{background:'#f4f2ee',borderRadius:10,padding:'16px 20px',whiteSpace:'pre-wrap',fontSize:13,lineHeight:1.8}}>{feedback}</div>
-    </div>
-  );
-
-  return (
-    <div style={{display:'flex',flexDirection:'column',height:'100%',fontFamily:'var(--font-sans)'}}>
-      <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(20,24,36,.08)',background:'white',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
-        <div style={{fontFamily:'var(--font-display)',fontSize:13,fontWeight:600}}>{cfg.epreuve}</div>
-        <div style={{fontFamily:'var(--font-mono)',fontSize:11,color:total>=GLOBAL_MIN?'#1a6641':'#c4420f',fontWeight:700}}>{total} / {GLOBAL_MIN} mots</div>
-      </div>
-      <div style={{display:'flex',borderBottom:'1px solid rgba(20,24,36,.08)',background:'white',overflowX:'auto',flexShrink:0}}>
-        {TABS.map(code => { const c = COMPS.find(x=>x.code===code); const w=wc(answers[code]); const m=code==='reflexive'?${spec.livrable.note_reflexive_min}:(c?.min||80); const col=getColor(code);
-          return <button key={code} onClick={()=>setTab(code)} style={{padding:'8px 14px',border:'none',background:'transparent',borderBottom:tab===code?'2px solid '+col:'2px solid transparent',color:tab===code?col:'#5b6473',fontWeight:tab===code?700:400,fontFamily:'var(--font-mono)',fontSize:10,cursor:'pointer',whiteSpace:'nowrap'}}>{code==='reflexive'?'✦ Réflexive':code} {w>=m?'✓':w+'/'+m}</button>; })}
-      </div>
-      <div style={{flex:1,display:'flex',overflow:'hidden',minHeight:0}}>
-        <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
-          {comp&&!isRefl&&<div style={{padding:'8px 16px',background:'#fafaf8',borderBottom:'1px solid rgba(20,24,36,.06)',fontSize:11,color:'#5b6473'}}><span style={{fontFamily:'var(--font-mono)',fontWeight:700,color:getColor(tab)}}>{comp.code}</span> · {comp.conseil}</div>}
-          <textarea value={answers[tab]||''} onChange={e=>save(tab,e.target.value)}
-            placeholder={isRefl?'Note réflexive — retour sur vos choix (min. ${spec.livrable.note_reflexive_min} mots)':(comp?.placeholder||'')}
-            style={{flex:1,border:'none',outline:'none',padding:'16px',fontSize:13.5,fontFamily:'var(--font-display)',lineHeight:1.75,resize:'none',color:'#141824'}}/>
-        </div>
-        <div style={{width:190,background:'#f4f2ee',overflowY:'auto',padding:'12px',borderLeft:'1px solid rgba(20,24,36,.08)',flexShrink:0}}>
-          {comp&&!isRefl&&<>
-            <div style={{fontFamily:'var(--font-mono)',fontSize:9,letterSpacing:'.14em',textTransform:'uppercase',color:getColor(tab),fontWeight:700,marginBottom:5}}>Attendu RNCP</div>
-            <div style={{fontSize:11,color:'#2a3142',lineHeight:1.6,marginBottom:10}}>{comp.rncp}</div>
-            <div style={{fontFamily:'var(--font-mono)',fontSize:9,color:'#9aa0ae',letterSpacing:'.1em',textTransform:'uppercase',marginBottom:4}}>Mots-clés</div>
-            <div style={{display:'flex',flexWrap:'wrap',gap:3}}>{(comp.motsCles||[]).map(m=><span key={m} style={{background:'rgba(20,24,36,.06)',borderRadius:3,padding:'1px 5px',fontSize:9.5,fontFamily:'var(--font-mono)',color:'#5b6473'}}>{m}</span>)}</div>
-          </>}
-        </div>
-      </div>
-      <div style={{padding:'10px 16px',borderTop:'1px solid rgba(20,24,36,.08)',background:'white',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
-        <div style={{fontSize:11,color:total>=GLOBAL_MIN?'#1a6641':'#c4420f'}}>{total>=GLOBAL_MIN?'✓ Seuil atteint':(GLOBAL_MIN-total)+' mots manquants'}</div>
-        <button onClick={submit} disabled={busy||total<GLOBAL_MIN} style={{padding:'8px 18px',background:total>=GLOBAL_MIN?'#134547':'#ccc',color:'white',border:'none',borderRadius:6,fontSize:12,fontWeight:700,cursor:total>=GLOBAL_MIN?'pointer':'not-allowed',fontFamily:'inherit'}}>{busy?'Évaluation…':'Soumettre au jury →'}</button>
-      </div>
-    </div>
-  );
-}`;
+// — Upload —
+var dz=document.getElementById("dropzone"),fi=document.getElementById("file-input");
+function readB64(f){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result.split(",")[1]);};r.onerror=function(){rej(new Error("Lecture échouée"));};r.readAsDataURL(f);});}
+function setFile(f){
+  S.file=f;
+  document.getElementById("file-display").innerHTML='<div class="file-chip"><span style="font-size:14px">📋</span><span class="file-chip-name">'+esc(f.name)+'</span><span class="file-chip-size">'+fmtSize(f.size)+'</span><button class="file-chip-del" id="del-f">×</button></div>';
+  document.getElementById("del-f").onclick=function(){S.file=null;document.getElementById("file-display").innerHTML="";document.getElementById("btn-ingest").disabled=true;};
+  document.getElementById("btn-ingest").disabled=false;
 }
+fi.addEventListener("change",function(e){if(e.target.files[0])setFile(e.target.files[0]);fi.value="";});
+dz.addEventListener("dragover",function(e){e.preventDefault();dz.classList.add("drag");});
+dz.addEventListener("dragleave",function(){dz.classList.remove("drag");});
+dz.addEventListener("drop",function(e){e.preventDefault();dz.classList.remove("drag");if(e.dataTransfer.files[0])setFile(e.dataTransfer.files[0]);});
 
-function buildAssistantJsx(spec) {
-  var bloc = spec.meta.bloc;
-  var cmd = spec.commanditaire.nom;
-  var tensions = (spec.jury_criteres_eliminatoires||[]).slice(0,5).map(function(t){return '- '+t;}).join('\\n');
-  return `// ══════════════════════════════════════════════════════════════
-//  JEFFERSON · Guide PAC ${bloc}
-//  ${spec.moment_narratif.titre_affaire}
-//  Généré par Éminéo PAC Generator
-// ══════════════════════════════════════════════════════════════
-const { useState: useJState, useEffect: useJEffect, useRef: useJRef } = React;
+// — Ingestion —
+var INGEST_SYS=`Tu es un ingénieur pédagogique expert RNCP. Analyse ce référentiel RACE et extrais sa structure complète. Réponds UNIQUEMENT avec le JSON brut, sans backticks.
+Structure :
+{"titre":string,"code_rncp":string,"niveau":string,"organisme_certificateur":string,"blocs":[{"code":string,"intitule":string,"type":"obligatoire"|"optionnel","epreuve":string,"note_reflexive":boolean,"competences":[{"code":string,"label":string,"rncp":string,"modalite_eval":string,"criteres_eval":[string]}]}]}
+RÈGLES : "rncp" = texte VERBATIM complet. Extraire TOUS les blocs y compris optionnels (4-I, 4-II, 4-III séparément).`;
 
-function buildJeffersonPrompt(name, elapsed) {
-  const prenom = (name||'').split(' ')[0]||'vous';
-  const left = Math.max(0, 210-elapsed);
-  let phase, obj, tools, action;
-  if (elapsed < 20) { phase='Acte 1 — Ancrage (0–20 min)'; obj='Observer. Pas encore produire.'; tools='Mail, Finder (Fiche contexte + Portraits)'; action='Ouvrir Mail. Lire le brief de ${cmd}.'; }
-  else if (elapsed < 50) { phase='Acte 2 — Entrée dans l\\'affaire (20–50 min)'; obj='Lire tous les documents disponibles.'; tools='PDF Viewer, Mail, Navigateur, Mémos vocaux'; action='Ouvrir PDF Viewer en premier.'; }
-  else if (elapsed < 95) { phase='Acte 3 — Diagnostic (50–95 min)'; obj='Construire votre analyse. Envoyer à ${cmd} sur Slack.'; tools='Slack (DM ${cmd}), Notes'; action='Ouvrir Slack. Écrire votre hypothèse à ${cmd}. 2 échanges débloquent le Livrable.'; }
-  else if (elapsed < 175) { phase='Acte 4 — Production (95–175 min)'; obj='Rédiger la contribution ${bloc}.'; tools='App Livrable'; action='Ouvrir le Livrable. Remplir dans l\\'ordre chaque compétence.'; }
-  else { phase='Acte 5 — Réflexion (175–210 min)'; obj='${spec.meta.note_reflexive ? "Note réflexive obligatoire. Puis soumettre." : "Relire et soumettre."}'; tools='App Livrable'; action='${spec.meta.note_reflexive ? "Onglet Réflexive. " + spec.livrable.note_reflexive_min + " mots minimum. Puis soumettre." : "Relire et soumettre avant la fin du timer."}'; }
-  return \`Tu es Jefferson — guide PAC ${bloc} d\\'Éminéo. Lapin avec montre. Direct, procédural, jamais philosophique.
-Session : \${prenom} · \${elapsed} min · \${left} min restantes · \${phase}
-Objectif : \${obj}
-Outils : \${tools}
-Action maintenant : \${action}
-Tensions du cas :
-${tensions}
-Règles : 3-5 lignes max. Toujours finir par l\\'outil exact à ouvrir.\`;
-}
-
-function getElapsed() { try { const s=parseInt(sessionStorage.getItem('pac_start_time')||'0'); return s?Math.floor((Date.now()-s)/60000):0; } catch{return 0;} }
-function now() { return new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}); }
-
-function JeffersonApp() {
-  const [msgs, setMsgs] = useJState([]);
-  const [draft, setDraft] = useJState('');
-  const [busy, setBusy] = useJState(false);
-  const [open, setOpen] = useJState(false);
-  const [unread, setUnread] = useJState(0);
-  const scrollRef = useJRef(null);
-
-  useJEffect(() => {
-    try { const s=sessionStorage.getItem('pac_jeff_${bloc.toLowerCase()}'); if(s){setMsgs(JSON.parse(s));return;} } catch{}
-    const elapsed = getElapsed();
-    const prenom = (window.LUMIO_DATA?.student?.name||'').split(' ')[0]||'';
-    const ws = [
-      \`Bonjour \${prenom}. Commencez par Mail — brief de ${cmd}.\`,
-      'Acte 2 — lisez tous les documents avant d\\'analyser.',
-      'Acte 3 — envoyez votre diagnostic à ${cmd} sur Slack.',
-      'Acte 4 — ouvrez le Livrable. Remplissez dans l\\'ordre.',
-      '${spec.meta.note_reflexive ? "Acte 5 — note réflexive obligatoire, puis soumettre." : "Acte 5 — relire et soumettre."}'
-    ];
-    const p = elapsed<20?0:elapsed<50?1:elapsed<95?2:elapsed<175?3:4;
-    setMsgs([{role:'assistant',text:ws[p],time:now()}]);
-  },[]);
-
-  useJEffect(() => { try{sessionStorage.setItem('pac_jeff_${bloc.toLowerCase()}',JSON.stringify(msgs));}catch{} },[msgs]);
-  useJEffect(() => { if(scrollRef.current) scrollRef.current.scrollTop=scrollRef.current.scrollHeight; },[msgs,busy]);
-  useJEffect(() => { if(!open&&msgs.length>0&&msgs[msgs.length-1].role==='assistant') setUnread(u=>u+1); },[msgs]);
-  useJEffect(() => { if(open) setUnread(0); },[open]);
-
-  const send = async (t) => {
-    const msg=(t||draft).trim(); if(!msg||busy) return;
-    setDraft('');
-    const next=[...msgs,{role:'user',text:msg,time:now()}];
-    setMsgs(next); setBusy(true);
-    try {
-      const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({model:'claude-sonnet-4-5',max_tokens:300,
-          system:buildJeffersonPrompt(window.LUMIO_DATA?.student?.name||'',getElapsed()),
-          messages:next.map(m=>({role:m.role,content:m.text}))})});
-      const d=await r.json();
-      setMsgs(h=>[...h,{role:'assistant',text:d.content?.[0]?.text||'Jefferson indisponible.',time:now()}]);
-    } catch { setMsgs(h=>[...h,{role:'assistant',text:'Connexion impossible.',time:now()}]); }
-    setBusy(false);
-  };
-
-  return (
-    <>
-      <div onClick={()=>setOpen(o=>!o)} style={{width:52,height:52,borderRadius:14,background:'linear-gradient(145deg,#0B2B2D,#134547)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',position:'relative',flexShrink:0,boxShadow:open?'0 0 0 2px #5DE298':'0 2px 8px rgba(0,0,0,.3)'}} title="Jefferson">
-        <svg width="30" height="30" viewBox="0 0 32 32" fill="none">
-          <ellipse cx="11" cy="9" rx="3.5" ry="7" fill="#5DE298" opacity=".9"/><ellipse cx="21" cy="9" rx="3.5" ry="7" fill="#5DE298" opacity=".9"/>
-          <ellipse cx="11" cy="9" rx="2" ry="5" fill="#E89B77" opacity=".7"/><ellipse cx="21" cy="9" rx="2" ry="5" fill="#E89B77" opacity=".7"/>
-          <ellipse cx="16" cy="22" rx="9" ry="8" fill="#5DE298"/><circle cx="16" cy="16" r="7" fill="#5DE298"/>
-          <circle cx="13.5" cy="15" r="1.5" fill="#0B2B2D"/><circle cx="18.5" cy="15" r="1.5" fill="#0B2B2D"/>
-          <circle cx="14" cy="14.5" r=".5" fill="white"/><circle cx="19" cy="14.5" r=".5" fill="white"/>
-          <ellipse cx="16" cy="17.5" rx="1" ry=".7" fill="#E89B77"/>
-          <rect x="8" y="24" width="5" height="3" rx="1" fill="#134547" opacity=".8"/>
-        </svg>
-        {unread>0&&<div style={{position:'absolute',top:-4,right:-4,background:'#c4420f',color:'white',borderRadius:'50%',width:18,height:18,fontSize:10,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center'}}>{unread}</div>}
-      </div>
-      {open&&(
-        <div style={{position:'fixed',bottom:80,right:16,width:300,height:400,background:'white',borderRadius:14,zIndex:9000,boxShadow:'0 8px 40px rgba(0,0,0,.25)',display:'flex',flexDirection:'column',overflow:'hidden',border:'1px solid rgba(20,24,36,.1)'}}>
-          <div style={{background:'linear-gradient(135deg,#0B2B2D,#134547)',padding:'10px 14px',display:'flex',alignItems:'center',gap:8}}>
-            <div style={{fontSize:20}}>🐇</div>
-            <div><div style={{color:'#5DE298',fontWeight:700,fontSize:12}}>Jefferson</div><div style={{color:'rgba(227,255,240,.7)',fontSize:9,fontFamily:'monospace'}}>Guide PAC · ${bloc}</div></div>
-            <button onClick={()=>setOpen(false)} style={{marginLeft:'auto',background:'rgba(255,255,255,.1)',border:'none',color:'white',borderRadius:6,width:22,height:22,cursor:'pointer',fontSize:11}}>✕</button>
-          </div>
-          <div ref={scrollRef} style={{flex:1,overflowY:'auto',padding:10,display:'flex',flexDirection:'column',gap:6}}>
-            {msgs.map((m,i)=>(
-              <div key={i} style={{display:'flex',justifyContent:m.role==='user'?'flex-end':'flex-start'}}>
-                <div style={{maxWidth:'85%',padding:'7px 10px',borderRadius:m.role==='user'?'10px 10px 2px 10px':'10px 10px 10px 2px',background:m.role==='user'?'#134547':'#f4f2ee',color:m.role==='user'?'white':'#141824',fontSize:12,lineHeight:1.55,whiteSpace:'pre-wrap'}}>{m.text}</div>
-              </div>
-            ))}
-            {busy&&<div style={{background:'#f4f2ee',borderRadius:'10px 10px 10px 2px',padding:'7px 10px',fontSize:14,width:40}}>···</div>}
-          </div>
-          <div style={{padding:'6px 8px',display:'flex',gap:5}}>
-            <input value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();send();}}} placeholder="Une question…" style={{flex:1,padding:'6px 9px',fontSize:12,border:'1px solid rgba(20,24,36,.15)',borderRadius:6,fontFamily:'inherit',outline:'none'}}/>
-            <button onClick={()=>send()} disabled={!draft.trim()||busy} style={{padding:'6px 10px',background:'#134547',color:'white',border:'none',borderRadius:6,cursor:'pointer',opacity:draft.trim()?1:.5}}>↑</button>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}`;
-}
-
-// ── RENDER OUTPUT ─────────────────────────────────────────────
-function renderOutput(spec) {
-  var area = document.getElementById('output-area');
-  area.innerHTML = '';
-
-  // Spec card
-  var sc = document.createElement('div'); sc.className = 'spec-card';
-  sc.innerHTML = '<div class="spec-card-header">'
-    + '<span class="spec-card-title">spec.json · '+spec.meta.bloc+' · '+spec.meta.intitule_bloc+'</span>'
-    + '</div><div class="spec-body">'
-    + '<div class="spec-row"><span class="spec-label">Titre RNCP</span><span class="spec-value">'+esc(spec.meta.titre_rncp)+'</span></div>'
-    + '<div class="spec-row"><span class="spec-label">Épreuve</span><span class="spec-value">'+esc(spec.meta.epreuve)+'</span></div>'
-    + '<div class="spec-row"><span class="spec-label">Affaire</span><span class="spec-value">'+esc(spec.moment_narratif.titre_affaire)+' · '+esc(spec.moment_narratif.date_fictive)+'</span></div>'
-    + '<div class="spec-row"><span class="spec-label">Commanditaire</span><span class="spec-value">'+esc(spec.commanditaire.nom)+' — '+esc(spec.commanditaire.role)+'</span></div>'
-    + '<div class="spec-row"><span class="spec-label">Note réflexive</span><span class="spec-value">'+(spec.meta.note_reflexive?'✓ Oui ('+spec.livrable.note_reflexive_min+' mots min.)':'✗ Non')+'</span></div>'
-    + '<div class="spec-row"><span class="spec-label">Compétences</span><div>'
-    + spec.competences.map(function(c){ return '<div class="comp-block"><div class="comp-code">'+esc(c.code)+'</div><div class="comp-label">'+esc(c.label)+'</div><div class="comp-rncp">'+esc(c.rncp.substring(0,140))+'…</div></div>'; }).join('')
-    + '</div></div>'
-    + '<div class="spec-row"><span class="spec-label">Documents fictifs</span><div>'+spec.documents_fictifs.map(function(d){ return '<span class="spec-tag">'+esc(d.type)+' · Acte '+d.acte+'</span>'; }).join('')+'</div></div>'
-    + '</div>';
-  area.appendChild(sc);
-
-  // File cards
-  [
-    { name:'data.js', badge:'Univers + Config PAC', key:'data.js' },
-    { name:'app-livrable.jsx', badge:'Formulaire + Jury IA', key:'app-livrable.jsx' },
-    { name:'app-assistant.jsx', badge:'Jefferson Guide', key:'app-assistant.jsx' }
-  ].forEach(function(f) {
-    var card = document.createElement('div'); card.className = 'file-card';
-    var preview = esc((lastFiles[f.key]||'').substring(0, 350));
-    card.innerHTML = '<div class="file-card-header"><span class="file-card-name">'+f.name+'</span><span class="file-card-badge">'+f.badge+'</span></div>'
-      + '<div class="code-preview">'+preview+'</div>'
-      + '<div class="file-card-footer">'
-      + '<button class="btn-sm" onclick="copyFile(\''+f.key+'\')">Copier</button>'
-      + '</div>';
-    area.appendChild(card);
-  });
-}
-
-function esc(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-window.copyFile = function(k) { var c = lastFiles[k]; if(!c) return; navigator.clipboard.writeText(c).then(function(){ showStatus('✅ '+k+' copié.','info'); }); };
-
-// ── GENERATE ──────────────────────────────────────────────────
-btnGen.addEventListener('click', async function() {
-  if (!files.length) return;
-  btnGen.disabled = true;
-  document.getElementById('btn-label').innerHTML = '<span class="spinner"></span> Extraction RNCP…';
-  hideStatus();
-
-  try {
-    var bloc = document.getElementById('bloc-select').value;
-    var ctx  = document.getElementById('ctx-field').value.trim();
-
-    // Build multipart message content
-    var parts = [];
-    for (var i = 0; i < files.length; i++) {
-      var f = files[i];
-      if (f.mime === 'application/pdf') {
-        parts.push({ type:'document', source:{ type:'base64', media_type:'application/pdf', data:f.b64 } });
-      } else {
-        try { parts.push({ type:'text', text:'=== '+f.name+' ===\n'+atob(f.b64) }); } catch(e) {}
-      }
-    }
-    parts.push({ type:'text', text:'\nBloc cible : '+bloc+(ctx?'\nContexte : '+ctx:'')+'\n\n'+SCHEMA });
-
-    showStatus('⏳ Claude analyse le référentiel…', 'info');
-
-    var resp = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4000,
-        system: 'Tu es un ingénieur pédagogique expert RNCP. Tu extrais les informations structurées d\'un référentiel officiel France Compétences pour alimenter un simulateur d\'épreuve certifiante (PAC — Éminéo). Réponds UNIQUEMENT avec le JSON brut, sans backticks ni texte autour.',
-        messages: [{ role:'user', content: parts }]
-      })
-    });
-
-    if (!resp.ok) {
-      var err = await resp.json().catch(function(){return{};});
-      throw new Error(err?.error?.message || 'Erreur proxy '+resp.status+' — vérifie que api/chat.js est déployé sur Vercel.');
-    }
-
-    var data = await resp.json();
-    var raw  = (data.content||[]).filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('');
-    var clean = raw.replace(/^```(?:json)?\s*/i,'').replace(/\s*```\s*$/,'').trim();
-
-    var spec;
-    try { spec = JSON.parse(clean); }
-    catch(e) { throw new Error('JSON invalide retourné par Claude : '+e.message); }
-
-    lastSpec = JSON.stringify(spec, null, 2);
-    showStatus('⏳ Construction des fichiers JSX…', 'info');
-
-    lastFiles['data.js']            = buildDataJs(spec);
-    lastFiles['app-livrable.jsx']   = buildLivrableJsx(spec);
-    lastFiles['app-assistant.jsx']  = buildAssistantJsx(spec);
-
-    // Show output
-    document.getElementById('empty-state').style.display = 'none';
-    document.getElementById('output-area').style.display = 'block';
-    renderOutput(spec);
-
-    document.getElementById('preview-title').textContent = 'PAC · '+spec.meta.bloc+' · '+spec.meta.intitule_bloc;
-    document.getElementById('btn-zip').disabled  = false;
-    document.getElementById('btn-spec').disabled = false;
-    showStatus('✅ Spec extraite + 3 fichiers JSX prêts. Valide le spec JSON puis télécharge le ZIP.', 'info');
-
-  } catch(e) {
-    showStatus('❌ '+e.message, 'error');
-  } finally {
-    btnGen.disabled = false;
-    document.getElementById('btn-label').textContent = 'Régénérer';
-    updateBtn();
-  }
+document.getElementById("btn-ingest").addEventListener("click",async function(){
+  if(!S.file)return;
+  var btn=document.getElementById("btn-ingest"),lbl=document.getElementById("btn-ingest-lbl");
+  btn.disabled=true;lbl.innerHTML='<span class="spinner"></span> Analyse…';hs(1);
+  try{
+    var b64=await readB64(S.file);
+    var mime=S.file.name.endsWith(".pdf")?"application/pdf":"text/plain";
+    ss(1,"⏳ Claude lit le référentiel…","info");
+    var r=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+      model:"claude-sonnet-4-6",max_tokens:8000,system:INGEST_SYS,
+      messages:[{role:"user",content:[{type:"document",source:{type:"base64",media_type:mime,data:b64}},{type:"text",text:"Extrais la structure complète de ce RACE."}]}]
+    })});
+    if(!r.ok){var e=await r.json().catch(function(){return{};});throw new Error(e?.error?.message||"Erreur proxy "+r.status);}
+    var d=await r.json();
+    var raw=(d.content||[]).filter(function(b){return b.type==="text";}).map(function(b){return b.text;}).join("");
+    var clean=raw.replace(/^```(?:json)?\s*/i,"").replace(/\s*```\s*$/,"").trim();
+    var race;try{race=JSON.parse(clean);}catch(e){throw new Error("JSON invalide : "+e.message);}
+    if(!race.blocs||!race.blocs.length)throw new Error("Aucun bloc extrait.");
+    S.race=race;save();
+    ss(1,"✅ "+race.blocs.length+" blocs extraits · "+esc(race.titre),"info");
+    setTimeout(function(){goTo(2);},700);
+  }catch(e){ss(1,"❌ "+e.message,"error");btn.disabled=false;lbl.textContent="Analyser le RACE";}
 });
 
-// ── ZIP ───────────────────────────────────────────────────────
-document.getElementById('btn-zip').addEventListener('click', async function() {
-  if (!lastSpec || !lastFiles['data.js']) return;
-  var btn = document.getElementById('btn-zip');
-  btn.disabled = true; btn.innerHTML = '<span class="mini-spin"></span> ZIP en cours…';
-  try {
-    var spec = JSON.parse(lastSpec);
-    var bloc = spec.meta.bloc.toLowerCase();
-    var zip  = new JSZip();
-
-    zip.file('data.js',           lastFiles['data.js']);
-    zip.file('app-livrable.jsx',  lastFiles['app-livrable.jsx']);
-    zip.file('app-assistant.jsx', lastFiles['app-assistant.jsx']);
-    zip.file('spec.json',         lastSpec);
-    zip.file('README.md',
-      '# PAC '+spec.meta.bloc+' — '+spec.meta.intitule_bloc+'\n\n'
-      +'Généré par Éminéo PAC Generator.\n\n'
-      +'## Fichiers livrés\n'
-      +'- `data.js` — Univers narratif + config PAC (**compléter le contenu des documents fictifs**)\n'
-      +'- `app-livrable.jsx` — Formulaire compétences RNCP + jury IA\n'
-      +'- `app-assistant.jsx` — Jefferson, guide procédural\n'
-      +'- `spec.json` — Spec intermédiaire validée\n\n'
-      +'## Déploiement\n'
-      +'1. Copier ces 3 fichiers JSX dans le repo `lumio-'+bloc+'`\n'
-      +'2. Compléter le contenu narratif des documents fictifs dans `data.js` (marqués `// TODO`)\n'
-      +'3. Copier les fichiers fixes depuis BC1 (desktop, session, styles, vercel.json…)\n'
-      +'4. `git push` → Vercel déploie automatiquement\n\n'
-      +'## Variables d\'environnement Vercel\n'
-      +'- `ANTHROPIC_API_KEY`\n'
-      +'- `UPSTASH_REDIS_REST_URL`\n'
-      +'- `UPSTASH_REDIS_REST_TOKEN`\n\n'
-      +'⚠️ Remplacer `{{PRENOM}}`, `{{NOM}}`, `{{EMAIL_ETUDIANT}}` dans data.js.\n'
-    );
-
-    var blob = await zip.generateAsync({ type:'blob', compression:'DEFLATE' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'PAC-'+spec.meta.bloc+'-'+spec.meta.titre_rncp.replace(/\s+/g,'-')+'.zip';
-    a.click();
-    URL.revokeObjectURL(a.href);
-    showStatus('✅ ZIP téléchargé.', 'info');
-  } catch(e) {
-    showStatus('❌ Erreur ZIP : '+e.message, 'error');
-  } finally {
-    btn.disabled = false; btn.innerHTML = '⬇ Télécharger le ZIP';
-  }
-});
-
-// ── COPY SPEC ─────────────────────────────────────────────────
-document.getElementById('btn-spec').addEventListener('click', function() {
-  if (!lastSpec) return;
-  navigator.clipboard.writeText(lastSpec).then(function() {
-    var b = document.getElementById('btn-spec'); var o = b.textContent;
-    b.textContent = '✓ Copié !';
-    setTimeout(function(){ b.textContent = o; }, 1800);
+// — Sélection —
+function renderBlocs(){
+  var r=S.race;
+  document.getElementById("titre-badge").textContent=r.code_rncp||"—";
+  document.getElementById("titre-name").textContent=r.titre||"—";
+  document.getElementById("titre-sub").textContent=(r.organisme_certificateur||"")+(r.niveau?" · Niveau "+r.niveau:"");
+  var list=document.getElementById("bloc-list");list.innerHTML="";
+  (r.blocs||[]).forEach(function(b){
+    var c=document.createElement("div");c.className="bloc-card"+(S.bloc&&S.bloc.code===b.code?" selected":"");
+    c.innerHTML='<div class="bloc-card-code">'+esc(b.code)+(b.type==="optionnel"?" · Opt.":"")+'</div><div class="bloc-card-label">'+esc(b.intitule)+'</div><div class="bloc-card-comps">'+((b.competences||[]).length)+' compétences · '+esc(b.epreuve||"—")+'</div>';
+    c.addEventListener("click",function(){selectBloc(b);});
+    list.appendChild(c);
   });
+}
+
+function selectBloc(b){
+  S.bloc=b;
+  document.querySelectorAll(".bloc-card").forEach(function(c,i){c.className="bloc-card"+((S.race.blocs||[])[i]?.code===b.code?" selected":"");});
+  document.getElementById("preview-header-lbl").textContent=b.code+" · "+b.intitule;
+  document.getElementById("btn-generate").disabled=false;
+  document.getElementById("empty-bloc").style.display="none";
+  var det=document.getElementById("bloc-detail");det.style.display="flex";
+  det.innerHTML='<div class="bloc-detail-hd"><div class="bloc-detail-code">'+esc(b.code)+(b.type?" · "+b.type.toUpperCase():"")+'</div><div class="bloc-detail-title">'+esc(b.intitule)+'</div><div class="bloc-detail-epreuve">'+esc(b.epreuve||"—")+(b.note_reflexive?" · Note réflexive obligatoire":"")+'</div></div>'
+    +(b.competences||[]).map(function(c){return '<div class="comp-card"><div class="comp-code">'+esc(c.code)+'</div><div class="comp-label">'+esc(c.label)+'</div><div class="comp-rncp">'+esc(c.rncp)+'</div></div>';}).join("");
+  document.getElementById("ctx-zone").style.display="block";
+}
+
+var SPEC_SYS=`Tu es un ingénieur pédagogique et développeur expert PAC (Parcours Activation Compétences — Éminéo). Réponds UNIQUEMENT avec le JSON brut demandé, sans backticks.`;
+function specPrompt(b,ctx){
+  return "BLOC :\n"+JSON.stringify(b,null,2)+"\n\nCONTEXTE LUMIO :\n"+(ctx||"Univers Lumio Health — medtech parisienne wearables stress. Personnages : Sonia Ferracci (DirMkt), Théo Marczak (CEO), Camille Ott (B2B), Yassine Morel (Content), Jakob Rein (Northgate).")+"\n\nGénère ce JSON :\n{"meta":{"titre_rncp":string,"bloc":string,"intitule_bloc":string,"epreuve":string,"duree_reelle_min":210,"note_reflexive":boolean},"moment_narratif":{"date_fictive":string,"titre_affaire":string,"situation":string,"enjeu_central":string},"commanditaire":{"nom":string,"role":string},"competences":[{"code":string,"label":string,"rncp":string,"placeholder":string,"min_mots":number,"mots_cles":[string],"conseil":string}],"livrable":{"format":string,"total_mots_min":520,"note_reflexive_min":100},"jury_criteres_eliminatoires":[string],"documents_fictifs":[{"id":string,"type":string,"expediteur":string,"objet":string,"role_narratif":string,"acte":number}],"easter_egg":{"type":"whatsapp","personnages":[string,string],"tension_revelee":string}}\nRÈGLES : rncp=VERBATIM. jury_criteres_eliminatoires=5+ dont un sur rôles/responsabilités ET un sur indicateurs d'impact. 6-8 documents fictifs sur 5 actes.";
+}
+
+document.getElementById("btn-generate").addEventListener("click",async function(){
+  if(!S.bloc)return;
+  var btn=document.getElementById("btn-generate"),lbl=document.getElementById("btn-gen-lbl");
+  btn.disabled=true;lbl.innerHTML='<span class="mini-spin"></span> Génération…';hs(2);ss(2,"⏳ Claude génère le spec PAC…","info");
+  try{
+    var ctx=document.getElementById("ctx-input").value.trim();
+    var r=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+      model:"claude-sonnet-4-6",max_tokens:6000,system:SPEC_SYS,
+      messages:[{role:"user",content:specPrompt(S.bloc,ctx)}]
+    })});
+    if(!r.ok){var e=await r.json().catch(function(){return{};});throw new Error(e?.error?.message||"Erreur "+r.status);}
+    var d=await r.json();
+    var raw=(d.content||[]).filter(function(b){return b.type==="text";}).map(function(b){return b.text;}).join("");
+    var clean=raw.replace(/^```(?:json)?\s*/i,"").replace(/\s*```\s*$/,"").trim();
+    var spec;try{spec=JSON.parse(clean);}catch(e){throw new Error("JSON spec invalide : "+e.message);}
+    S.spec=spec;
+    S.files={"data.js":buildData(spec),"app-livrable.jsx":buildLivrable(spec),"app-assistant.jsx":buildAssistant(spec)};
+    save();goTo(3);
+  }catch(e){ss(2,"❌ "+e.message,"error");btn.disabled=false;lbl.textContent="Générer ce bloc →";}
 });
+
+document.getElementById("btn-back").addEventListener("click",function(){goTo(2);});
+
+// — Output —
+function renderOutput(){
+  var spec=S.spec;
+  var info=document.getElementById("output-bloc-info");
+  info.innerHTML='<div class="output-bloc-code">'+esc(spec.meta.bloc)+" · "+esc(spec.meta.titre_rncp)+'</div><div class="output-bloc-title">'+esc(spec.meta.intitule_bloc)+'</div><div style="font-size:11px;color:var(--muted);margin-top:3px;">'+esc(spec.moment_narratif.titre_affaire)+" · "+esc(spec.moment_narratif.date_fictive)+"</div>";
+  var fl=document.getElementById("output-file-list");fl.innerHTML="";
+  ["data.js","app-livrable.jsx","app-assistant.jsx"].forEach(function(nm){
+    var it=document.createElement("div");it.className="output-file-item";
+    it.innerHTML='<span style="font-size:13px">📄</span><span class="output-file-name">'+nm+'</span><button class="output-file-btn" onclick="cpFile(\''+nm+'\')" >Copier</button>';
+    fl.appendChild(it);
+  });
+  document.getElementById("btn-zip").disabled=false;
+  var oc=document.getElementById("output-content");oc.innerHTML="";
+  var sc=document.createElement("div");sc.className="spec-card";
+  sc.innerHTML='<div class="spec-card-head"><span class="spec-card-title">spec.json · '+esc(spec.meta.bloc)+" · "+esc(spec.meta.intitule_bloc)+'</span><button class="btn-sm" onclick="cpSpec()">Copier JSON</button></div>'
+    +'<div class="spec-body">'
+    +'<div class="spec-row"><span class="spec-lbl">Titre RNCP</span><span class="spec-val">'+esc(spec.meta.titre_rncp)+'</span></div>'
+    +'<div class="spec-row"><span class="spec-lbl">Épreuve</span><span class="spec-val">'+esc(spec.meta.epreuve)+'</span></div>'
+    +'<div class="spec-row"><span class="spec-lbl">Affaire</span><span class="spec-val">'+esc(spec.moment_narratif.titre_affaire)+" · "+esc(spec.moment_narratif.date_fictive)+'</span></div>'
+    +'<div class="spec-row"><span class="spec-lbl">Commanditaire</span><span class="spec-val">'+esc(spec.commanditaire.nom)+" — "+esc(spec.commanditaire.role)+'</span></div>'
+    +'<div class="spec-row"><span class="spec-lbl">Note réflexive</span><span class="spec-val">'+( spec.meta.note_reflexive?"✓ Oui":"✗ Non")+'</span></div>'
+    +'<div class="spec-row"><span class="spec-lbl">Compétences</span><span class="spec-val">'+( spec.competences||[]).map(function(c){return '<span class="spec-tag">'+esc(c.code)+'</span>';}).join("")+'</span></div>'
+    +'<div class="spec-row"><span class="spec-lbl">Documents</span><span class="spec-val">'+( spec.documents_fictifs||[]).map(function(d){return '<span class="spec-tag">'+esc(d.type)+" A"+d.acte+'</span>';}).join("")+'</span></div>'
+    +'</div>';
+  oc.appendChild(sc);
+  [["data.js","Univers + Config PAC"],["app-livrable.jsx","Formulaire + Jury IA"],["app-assistant.jsx","Jefferson Guide"]].forEach(function(f){
+    var card=document.createElement("div");card.className="file-card";
+    card.innerHTML='<div class="file-card-head"><span class="file-card-name">'+f[0]+'</span><span class="file-card-badge">'+f[1]+'</span></div>'
+      +'<div class="code-block">'+esc((S.files[f[0]]||"").substring(0,280))+'</div>'
+      +'<div class="file-card-foot"><button class="btn-sm" onclick="cpFile(\''+f[0]+'\')" >Copier</button></div>';
+    oc.appendChild(card);
+  });
+}
+
+window.cpSpec=function(){if(!S.spec)return;navigator.clipboard.writeText(JSON.stringify(S.spec,null,2)).then(function(){ss(3,"✅ JSON copié.","info");});};
+window.cpFile=function(k){var c=S.files[k];if(!c)return;navigator.clipboard.writeText(c).then(function(){ss(3,"✅ "+k+" copié.","info");});};
+
+document.getElementById("btn-zip").addEventListener("click",async function(){
+  if(!S.spec)return;
+  var btn=document.getElementById("btn-zip");btn.disabled=true;btn.innerHTML='<span class="mini-spin"></span> ZIP…';
+  try{
+    var spec=S.spec,bloc=spec.meta.bloc.toLowerCase().replace(/[^a-z0-9]/g,"-"),zip=new JSZip();
+    zip.file("data.js",S.files["data.js"]);
+    zip.file("app-livrable.jsx",S.files["app-livrable.jsx"]);
+    zip.file("app-assistant.jsx",S.files["app-assistant.jsx"]);
+    zip.file("spec.json",JSON.stringify(spec,null,2));
+    zip.file("README.md","# PAC "+spec.meta.bloc+" — "+spec.meta.intitule_bloc+"\n\n"+spec.meta.titre_rncp+"\n\n## Fichiers\n- `data.js` — Univers + config (compléter les documents fictifs // TODO)\n- `app-livrable.jsx` — Formulaire + jury IA\n- `app-assistant.jsx` — Jefferson\n\n## Déploiement\n1. Copier dans repo `lumio-"+bloc+"`\n2. Compléter les documents fictifs dans data.js\n3. Copier fichiers fixes depuis BC1\n4. git push → Vercel\n\n⚠️ Remplacer {{PRENOM}} {{NOM}} {{EMAIL_ETUDIANT}} dans data.js\n");
+    var blob=await zip.generateAsync({type:"blob",compression:"DEFLATE"});
+    var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="PAC-"+spec.meta.bloc+"-"+spec.meta.titre_rncp.replace(/\s+/g,"-")+".zip";a.click();URL.revokeObjectURL(a.href);
+    ss(3,"✅ ZIP téléchargé.","info");
+  }catch(e){ss(3,"❌ "+e.message,"error");}
+  finally{btn.disabled=false;btn.innerHTML="⬇ Télécharger le ZIP";}
+});
+
+// — Builders —
+function buildData(spec){
+  var bloc=spec.meta.bloc;
+  var docs=(spec.documents_fictifs||[]).map(function(d){return "  // [Acte "+d.acte+"] "+d.id+" ("+d.type+") — "+d.role_narratif;}).join("\n");
+  var comps=JSON.stringify((spec.competences||[]).map(function(c){return{code:c.code,label:c.label,libelle:c.label.split(" ").slice(0,2).join(" "),rncp:c.rncp,placeholder:c.placeholder,min:c.min_mots,motsCles:c.mots_cles,conseil:c.conseil};}),null,2);
+  var actes=[{n:1,label:"Ancrage terrain",debut:0,fin:20,couleur:"#7a756c"},{n:2,label:"Entrée dans l'affaire",debut:20,fin:50,couleur:"#1b4f8a"},{n:3,label:"Diagnostic",debut:50,fin:95,couleur:"#1a6641"},{n:4,label:"Production",debut:95,fin:175,couleur:"#c4420f"},{n:5,label:"Réflexion",debut:175,fin:210,couleur:"#7a756c"}];
+  return "// DATA · PAC "+bloc+" · "+spec.meta.titre_rncp+"\n// "+spec.moment_narratif.titre_affaire+" · "+spec.moment_narratif.date_fictive+"\n// ⚠️ Compléter le contenu narratif des documents fictifs (// TODO)\n\nwindow.LUMIO_DATA = {\n  student: { name: \"{{PRENOM}} {{NOM}}\", role: \"Consultant·e\", email: \"{{EMAIL_ETUDIANT}}\", company: \"Lumio Health\" },\n  contexte: { title: \"Fiche contexte · "+spec.moment_narratif.date_fictive+"\", body: "+JSON.stringify(spec.moment_narratif.situation)+" },\n\n  // Documents fictifs — TODO compléter le contenu de chacun\n"+docs+"\n\n  slackMessages: {\n    initial: [{ from: \""+spec.commanditaire.nom+"\", time: \"08:32\", text: "+JSON.stringify(spec.moment_narratif.enjeu_central)+", read: true }],\n    delayed: []\n  }\n};\n\nwindow.PASS_CONFIG = {\n  bloc: "+JSON.stringify(bloc)+",\n  titre: "+JSON.stringify(spec.meta.intitule_bloc)+",\n  epreuve: "+JSON.stringify(spec.meta.epreuve)+",\n  deadline: "+JSON.stringify(spec.moment_narratif.date_fictive+" · 18h00")+",\n  commanditaire: "+JSON.stringify(spec.commanditaire.nom)+",\n  dispositif: \"PAC\",\n  temps: "+JSON.stringify(actes,null,2)+",\n  competences: "+comps+"\n};\n";
+}
+function buildLivrable(spec){
+  var bloc=spec.meta.bloc;
+  var crit=(spec.jury_criteres_eliminatoires||[]).map(function(c){return "- "+c;}).join("\n");
+  var efmt=(spec.competences||[]).map(function(c){return "### "+c.code+" — [Satisfaisant / Insuffisant / Absent]\\nUne phrase de retour précise.";}).join("\\n\\n");
+  return "// LIVRABLE APP · PAC "+bloc+" · "+spec.meta.titre_rncp+"\n// Compétences : "+(spec.competences||[]).map(function(c){return c.code;}).join(", ")+"\n// TODO : implémenter LivrableApp() selon le pattern app-livrable.jsx BC5\n\nconst wc = (t) => (t||\'\').trim() ? (t||\'\').trim().split(/\\s+/).length : 0;\nconst GLOBAL_MIN = "+spec.livrable.total_mots_min+";\n\nconst JURY_PROMPT = `Tu es jury certifiant "+bloc+".\nContexte : "+spec.moment_narratif.titre_affaire+" · "+spec.moment_narratif.date_fictive+".\nCritères éliminatoires :\n"+crit+"\nFormat STRICT :\n"+efmt+(spec.meta.note_reflexive?"\\n\\n### Note réflexive — [Satisfaisant / Insuffisant / Absent]\\nUne phrase."  :"")+"\n\n## Niveau global\n**[Non conforme / Partiellement conforme / Conforme / Conforme avec distinction]**\n\n## Question de jury\nUne question dérangeante.`;\n\n// Référence : app-livrable.jsx du repo lumio-bc5\n";
+}
+function buildAssistant(spec){
+  var bloc=spec.meta.bloc,cmd=spec.commanditaire.nom;
+  var tens=(spec.jury_criteres_eliminatoires||[]).slice(0,4).map(function(t){return "- "+t;}).join("\n");
+  return "// JEFFERSON · PAC "+bloc+"\n// "+spec.moment_narratif.titre_affaire+"\n// TODO : implémenter JeffersonApp() selon le pattern app-assistant.jsx BC5\n\n// Tensions :\n"+tens+"\n\nfunction buildJeffersonPrompt(name, elapsed) {\n  const prenom = (name||\'\').split(\' \')[0]||'vous';\n  const left = Math.max(0,210-elapsed);\n  let phase,obj,tools,action;\n  if(elapsed<20){phase=\'Acte 1\';obj=\'Observer.\';tools=\'Mail, Finder\';action=\'Ouvrir Mail. Brief de "+cmd+".';}\n  else if(elapsed<50){phase=\'Acte 2\';obj=\'Lire les documents.\';tools=\'PDF, Mail, Navigateur, Mémos\';action=\'PDF Viewer en premier.';}\n  else if(elapsed<95){phase=\'Acte 3\';obj=\'Diagnostic → "+cmd+".\';tools=\'Slack, Notes\';action=\'Slack. 2 échanges débloquent le Livrable.';}\n  else if(elapsed<175){phase=\'Acte 4\';obj=\'Rédiger "+bloc+".\';tools=\'App Livrable\';action=\'Livrable. Dans l\\'ordre.';}\n  else{phase=\'Acte 5\';obj=\'"+( spec.meta.note_reflexive?"Note réflexive + soumettre.":"Soumettre.")+"\'  ;tools=\'App Livrable\';action=\'"+( spec.meta.note_reflexive?"Réflexive + soumettre.":"Soumettre.")+"';}\n  return `Guide PAC "+bloc+". ${prenom} · ${elapsed}min · ${left}min. ${phase} — ${obj} Outils : ${tools}. Action : ${action}`;\n}\n\n// Référence : app-assistant.jsx du repo lumio-bc5\n";
+}
 </script>
 </body>
 </html>
