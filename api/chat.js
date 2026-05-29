@@ -12,35 +12,22 @@ export default async function handler(req, res) {
   try {
     let body = req.body;
     if (typeof body === 'string') body = JSON.parse(body);
-
     const { model, system, messages, max_tokens } = body || {};
-    if (!model || !Array.isArray(messages) || !max_tokens) {
-      return res.status(400).json({ error: 'Missing required fields: model, messages, max_tokens' });
-    }
+    if (!model || !Array.isArray(messages) || !max_tokens)
+      return res.status(400).json({ error: 'Missing required fields' });
 
-    // Passe messages tels quels — supporte les content arrays multipart (PDF base64)
     const payload = { model, messages, max_tokens };
     if (system) payload.system = system;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify(payload),
     });
-
     const data = await response.json();
-    if (!response.ok) {
-      console.error('Anthropic API error:', data);
-      return res.status(response.status).json(data);
-    }
-
+    if (!response.ok) return res.status(response.status).json(data);
     return res.status(200).json(data);
   } catch (err) {
-    console.error('Proxy error:', err);
     return res.status(500).json({ error: 'Proxy error', message: err.message });
   }
 }
