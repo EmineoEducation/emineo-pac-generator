@@ -148,12 +148,12 @@ html,body{height:100%;font-family:'Inter',sans-serif;background:#F0EFEA;color:va
     <div class="ingest-card">
       <div><div class="ingest-title">Dépose le <span>référentiel RACE</span></div>
       <div class="ingest-sub" style="margin-top:6px;">PDF officiel France Compétences · tous titres RNCP acceptés.<br>Claude extrait automatiquement tous les blocs de compétences.</div></div>
-      <label class="upload-zone" id="dropzone" for="file-input" style="display:block;">
-        <input type="file" id="file-input" accept=".pdf,.docx,.doc,.txt" style="display:none"/>
+      <div class="upload-zone" id="dropzone">
         <div class="upload-icon">📋</div>
         <div class="upload-label">Cliquer pour choisir un fichier</div>
         <div class="upload-hint">PDF · DOCX · TXT — ou glisser-déposer</div>
-      </label>
+      </div>
+      <input type="file" id="file-input" accept=".pdf,application/pdf,.docx,.doc,.txt" style="display:none"/>
       <div id="file-display"></div>
       <div class="status" id="status-1"></div>
       <button class="btn-primary" id="btn-ingest" disabled><span id="btn-ingest-lbl">Analyser le RACE</span></button>
@@ -235,21 +235,51 @@ function goTo(n){
 if(S.spec){goTo(3);}else if(S.race){goTo(2);}
 
 // — Upload —
-var dz=document.getElementById("dropzone"),fi=document.getElementById("file-input");
 function readB64(f){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result.split(",")[1]);};r.onerror=function(){rej(new Error("Lecture échouée"));};r.readAsDataURL(f);});}
-function setFile(f){
-  S.file=f;
-  document.getElementById("file-display").innerHTML='<div class="file-chip"><span style="font-size:14px">📋</span><span class="file-chip-name">'+esc(f.name)+'</span><span class="file-chip-size">'+fmtSize(f.size)+'</span><button class="file-chip-del" id="del-f">×</button></div>';
-  document.getElementById("del-f").onclick=function(){S.file=null;document.getElementById("file-display").innerHTML="";document.getElementById("btn-ingest").disabled=true;};
-  document.getElementById("btn-ingest").disabled=false;
+
+function handleFiles(files){
+  var f = files[0];
+  if(!f) return;
+  S.file = f;
+  document.getElementById("file-display").innerHTML =
+    '<div class="file-chip"><span style="font-size:14px">📋</span>'
+    +'<span class="file-chip-name">'+esc(f.name)+'</span>'
+    +'<span class="file-chip-size">'+fmtSize(f.size)+'</span>'
+    +'<button class="file-chip-del" id="del-f">×</button></div>';
+  document.getElementById("del-f").onclick = function(){
+    S.file = null;
+    document.getElementById("file-display").innerHTML = "";
+    document.getElementById("btn-ingest").disabled = true;
+  };
+  document.getElementById("btn-ingest").disabled = false;
 }
-fi.addEventListener("change",function(e){if(e.target.files[0])setFile(e.target.files[0]);fi.value="";});
-dz.addEventListener("dragover",function(e){e.preventDefault();e.stopPropagation();dz.classList.add("drag");});
-dz.addEventListener("dragleave",function(e){e.stopPropagation();dz.classList.remove("drag");});
-dz.addEventListener("drop",function(e){e.preventDefault();e.stopPropagation();dz.classList.remove("drag");if(e.dataTransfer.files[0])setFile(e.dataTransfer.files[0]);});
-// Bloquer le drop navigateur hors zone
-document.addEventListener("dragover",function(e){e.preventDefault();});
-document.addEventListener("drop",function(e){e.preventDefault();});
+
+document.addEventListener("DOMContentLoaded", function(){
+  var fi = document.getElementById("file-input");
+  var dz = document.getElementById("dropzone");
+
+  // Clic sur la zone → ouvre le sélecteur de fichier
+  dz.addEventListener("click", function(){ fi.click(); });
+
+  // Sélection via le sélecteur natif
+  fi.addEventListener("change", function(e){
+    if(e.target.files && e.target.files.length > 0) handleFiles(e.target.files);
+    fi.value = "";
+  });
+
+  // Drag & drop sur la zone
+  dz.addEventListener("dragover", function(e){ e.preventDefault(); e.stopPropagation(); dz.classList.add("drag"); });
+  dz.addEventListener("dragleave", function(e){ e.stopPropagation(); dz.classList.remove("drag"); });
+  dz.addEventListener("drop", function(e){
+    e.preventDefault(); e.stopPropagation();
+    dz.classList.remove("drag");
+    if(e.dataTransfer && e.dataTransfer.files) handleFiles(e.dataTransfer.files);
+  });
+
+  // Bloquer l'ouverture du PDF dans le navigateur si drop hors zone
+  document.addEventListener("dragover", function(e){ e.preventDefault(); });
+  document.addEventListener("drop", function(e){ e.preventDefault(); });
+});
 
 // — Ingestion —
 var INGEST_SYS=`Tu es un ingénieur pédagogique expert RNCP. Analyse ce référentiel RACE et extrais sa structure complète. Réponds UNIQUEMENT avec le JSON brut, sans backticks.
