@@ -150,10 +150,11 @@ html,body{height:100%;font-family:'Inter',sans-serif;background:#F0EFEA;color:va
       <div class="ingest-sub" style="margin-top:6px;">PDF officiel France Compétences · tous titres RNCP acceptés.<br>Claude extrait automatiquement tous les blocs de compétences.</div></div>
       <div class="upload-zone" id="dropzone">
         <div class="upload-icon">📋</div>
-        <div class="upload-label">Cliquer pour choisir un fichier</div>
-        <div class="upload-hint">PDF · DOCX · TXT — ou glisser-déposer</div>
+        <div class="upload-label">Glisser-déposer ici</div>
+        <div class="upload-hint">ou</div>
+        <label for="file-input" style="display:inline-block;margin-top:10px;padding:8px 20px;background:var(--ink);color:var(--mint);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Manrope',sans-serif;">Choisir un fichier</label>
+        <input type="file" id="file-input" accept=".pdf,application/pdf,.docx,.doc,.txt"/>
       </div>
-      <input type="file" id="file-input" accept=".pdf,application/pdf,.docx,.doc,.txt" style="display:none"/>
       <div id="file-display"></div>
       <div class="status" id="status-1"></div>
       <button class="btn-primary" id="btn-ingest" disabled><span id="btn-ingest-lbl">Analyser le RACE</span></button>
@@ -238,14 +239,16 @@ if(S.spec){goTo(3);}else if(S.race){goTo(2);}
 function readB64(f){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result.split(",")[1]);};r.onerror=function(){rej(new Error("Lecture échouée"));};r.readAsDataURL(f);});}
 
 function handleFiles(files){
-  var f = files[0];
+  var f = (files && files[0]) ? files[0] : null;
   if(!f) return;
   S.file = f;
   document.getElementById("file-display").innerHTML =
-    '<div class="file-chip"><span style="font-size:14px">📋</span>'
+    '<div class="file-chip">'
+    +'<span style="font-size:14px">📋</span>'
     +'<span class="file-chip-name">'+esc(f.name)+'</span>'
     +'<span class="file-chip-size">'+fmtSize(f.size)+'</span>'
-    +'<button class="file-chip-del" id="del-f">×</button></div>';
+    +'<button class="file-chip-del" id="del-f">×</button>'
+    +'</div>';
   document.getElementById("del-f").onclick = function(){
     S.file = null;
     document.getElementById("file-display").innerHTML = "";
@@ -254,32 +257,26 @@ function handleFiles(files){
   document.getElementById("btn-ingest").disabled = false;
 }
 
-document.addEventListener("DOMContentLoaded", function(){
+(function(){
   var fi = document.getElementById("file-input");
   var dz = document.getElementById("dropzone");
 
-  // Clic sur la zone → ouvre le sélecteur de fichier
-  dz.addEventListener("click", function(){ fi.click(); });
-
-  // Sélection via le sélecteur natif
   fi.addEventListener("change", function(e){
-    if(e.target.files && e.target.files.length > 0) handleFiles(e.target.files);
+    handleFiles(e.target.files);
     fi.value = "";
   });
 
-  // Drag & drop sur la zone
-  dz.addEventListener("dragover", function(e){ e.preventDefault(); e.stopPropagation(); dz.classList.add("drag"); });
-  dz.addEventListener("dragleave", function(e){ e.stopPropagation(); dz.classList.remove("drag"); });
+  dz.addEventListener("dragover", function(e){ e.preventDefault(); dz.classList.add("drag"); });
+  dz.addEventListener("dragleave", function(){ dz.classList.remove("drag"); });
   dz.addEventListener("drop", function(e){
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault();
     dz.classList.remove("drag");
-    if(e.dataTransfer && e.dataTransfer.files) handleFiles(e.dataTransfer.files);
+    handleFiles(e.dataTransfer.files);
   });
 
-  // Bloquer l'ouverture du PDF dans le navigateur si drop hors zone
   document.addEventListener("dragover", function(e){ e.preventDefault(); });
-  document.addEventListener("drop", function(e){ e.preventDefault(); });
-});
+  document.addEventListener("drop",     function(e){ e.preventDefault(); });
+})();
 
 // — Ingestion —
 var INGEST_SYS=`Tu es un ingénieur pédagogique expert RNCP. Analyse ce référentiel RACE et extrais sa structure complète. Réponds UNIQUEMENT avec le JSON brut, sans backticks.
