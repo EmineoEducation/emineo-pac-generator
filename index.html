@@ -37,7 +37,7 @@ html,body{height:100%;font-family:'Inter',sans-serif;background:#F0EFEA;color:va
 .ingest-title{font-family:'Manrope',sans-serif;font-weight:800;font-size:22px;line-height:1.2;}
 .ingest-title span{color:var(--green);}
 .ingest-sub{font-size:13px;color:var(--muted);line-height:1.6;}
-.upload-zone{border:1.5px dashed rgba(13,59,54,.25);border-radius:12px;padding:28px 20px;text-align:center;cursor:pointer;transition:all .18s;background:#fff;position:relative;}
+.upload-zone{border:1.5px dashed rgba(13,59,54,.25);border-radius:12px;padding:28px 20px;text-align:center;cursor:pointer;transition:all .18s;background:#fff;display:block;user-select:none;}
 .upload-zone:hover,.upload-zone.drag{border-color:var(--mint);background:var(--mint-soft);}
 .upload-icon{font-size:28px;margin-bottom:8px;}
 .upload-label{font-size:13px;font-weight:600;}
@@ -148,12 +148,12 @@ html,body{height:100%;font-family:'Inter',sans-serif;background:#F0EFEA;color:va
     <div class="ingest-card">
       <div><div class="ingest-title">Dépose le <span>référentiel RACE</span></div>
       <div class="ingest-sub" style="margin-top:6px;">PDF officiel France Compétences · tous titres RNCP acceptés.<br>Claude extrait automatiquement tous les blocs de compétences.</div></div>
-      <input type="file" id="file-input" accept=".pdf,.docx,.doc,.txt" style="display:none"/>
-      <div class="upload-zone" id="dropzone" onclick="document.getElementById('file-input').click()">
+      <label class="upload-zone" id="dropzone" for="file-input" style="display:block;">
+        <input type="file" id="file-input" accept=".pdf,.docx,.doc,.txt" style="display:none"/>
         <div class="upload-icon">📋</div>
-        <div class="upload-label">Glisser-déposer ou cliquer</div>
-        <div class="upload-hint">Référentiel d'activités, compétences et évaluation (RACE)</div>
-      </div>
+        <div class="upload-label">Cliquer pour choisir un fichier</div>
+        <div class="upload-hint">PDF · DOCX · TXT — ou glisser-déposer</div>
+      </label>
       <div id="file-display"></div>
       <div class="status" id="status-1"></div>
       <button class="btn-primary" id="btn-ingest" disabled><span id="btn-ingest-lbl">Analyser le RACE</span></button>
