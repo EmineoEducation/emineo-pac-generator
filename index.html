@@ -6,6 +6,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{--ink:#0D3B36;--mint:#8FF2C2;--mint-soft:#E8FBF1;--mint-mid:#C7F4DD;--green:#1F6F5C;--paper:#FAFAF7;--muted:#6B7B78;--rule:rgba(13,59,54,.1);--red:#C0392B;}
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -355,13 +356,33 @@ _dz.addEventListener('drop',      function(e) {
 document.addEventListener('dragover', function(e) { e.preventDefault(); });
 document.addEventListener('drop',     function(e) { e.preventDefault(); });
 
-function readB64(f) {
-  return new Promise(function(res, rej) {
-    var r = new FileReader();
-    r.onload  = function() { res(r.result.split(',')[1]); };
-    r.onerror = function() { rej(new Error('Lecture échouée')); };
-    r.readAsDataURL(f);
-  });
+async function extractText(f) {
+  var ext = f.name.split('.').pop().toLowerCase();
+
+  // Fichiers texte : lire directement
+  if (ext !== 'pdf') {
+    return new Promise(function(res, rej) {
+      var r = new FileReader();
+      r.onload  = function() { res(r.result); };
+      r.onerror = function() { rej(new Error('Lecture échouée')); };
+      r.readAsText(f, 'utf-8');
+    });
+  }
+
+  // PDF : extraction texte avec PDF.js
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  var arrayBuffer = await f.arrayBuffer();
+  var pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  var pages = [];
+  for (var i = 1; i <= pdf.numPages; i++) {
+    var page    = await pdf.getPage(i);
+    var content = await page.getTextContent();
+    var text    = content.items.map(function(item) { return item.str; }).join(' ');
+    pages.push(text);
+  }
+  return pages.join('\n\n');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -378,10 +399,13 @@ document.getElementById('btn-ingest').addEventListener('click', async function()
   hs(1);
 
   try {
-    var b64  = await readB64(S.file);
-    var mime = S.file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'text/plain';
+    ss(1, '⏳ Extraction du texte…', 'info');
+    var text = await extractText(S.file);
 
-    ss(1, '⏳ Claude lit le référentiel…', 'info');
+    if (!text || text.trim().length < 200)
+      throw new Error('Texte extrait trop court — vérifie que le PDF n\'est pas scanné sans OCR.');
+
+    ss(1, '⏳ Claude analyse le référentiel…', 'info');
 
     var resp = await fetch('/api/chat', {
       method: 'POST',
@@ -392,10 +416,7 @@ document.getElementById('btn-ingest').addEventListener('click', async function()
         system: INGEST_SYS,
         messages: [{
           role: 'user',
-          content: [
-            { type: 'document', source: { type: 'base64', media_type: mime, data: b64 } },
-            { type: 'text', text: 'Extrais la structure complète de ce référentiel RACE.' }
-          ]
+          content: 'Voici le contenu du référentiel RACE :\n\n' + text.substring(0, 60000)
         }]
       })
     });
