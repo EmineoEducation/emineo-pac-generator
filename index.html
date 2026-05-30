@@ -162,6 +162,22 @@ html,body{height:100%;font-family:'Inter',sans-serif;background:#F0EFEA;color:va
         </div>
       </div>
 
+      <!-- Clé API — saisie une fois, stockée en localStorage -->
+      <div id="api-key-section">
+        <div style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid rgba(13,59,54,.2);border-radius:8px;padding:8px 12px;">
+          <span style="font-size:14px">🔑</span>
+          <input type="password" id="api-key-input" placeholder="Clé Anthropic — sk-ant-…"
+                 style="flex:1;border:none;outline:none;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink);background:transparent;"/>
+          <button type="button" id="btn-save-key"
+                  style="background:var(--ink);color:var(--mint);border:none;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Manrope',sans-serif;">
+            Sauvegarder
+          </button>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px;">
+          Stockée uniquement dans votre navigateur (localStorage). Jamais transmise à un serveur tiers.
+        </div>
+      </div>
+
       <!-- Zone drag & drop — aucun input dedans -->
       <div class="drop-zone" id="drop-zone">
         <div class="drop-zone-icon">📋</div>
@@ -301,6 +317,26 @@ function goTo(n) {
   if (n===3 && S.spec) renderOutput();
 }
 
+// Clé API — restaurer depuis localStorage
+(function() {
+  var saved = localStorage.getItem('pac_anthropic_key');
+  if (saved) {
+    document.getElementById('api-key-input').value = saved;
+  }
+  document.getElementById('btn-save-key').addEventListener('click', function() {
+    var val = document.getElementById('api-key-input').value.trim();
+    if (!val.startsWith('sk-ant-')) {
+      alert('Format invalide — la clé doit commencer par sk-ant-');
+      return;
+    }
+    localStorage.setItem('pac_anthropic_key', val);
+    var btn = document.getElementById('btn-save-key');
+    btn.textContent = '✓ Sauvegardée';
+    btn.style.background = 'var(--green)';
+    setTimeout(function() { btn.textContent = 'Sauvegarder'; btn.style.background = 'var(--ink)'; }, 2000);
+  });
+})();
+
 // Restaurer état si session en cours
 if (S.spec) goTo(3); else if (S.race) goTo(2);
 
@@ -407,9 +443,17 @@ document.getElementById('btn-ingest').addEventListener('click', async function()
 
     ss(1, '⏳ Claude analyse le référentiel…', 'info');
 
-    var resp = await fetch('/api/chat', {
+    var apiKey = localStorage.getItem('pac_anthropic_key') || '';
+    if (!apiKey) throw new Error('Clé API manquante — saisis ta clé Anthropic en haut de la page.');
+
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 8000,
@@ -517,9 +561,17 @@ document.getElementById('btn-generate').addEventListener('click', async function
 
   try {
     var ctx = document.getElementById('ctx-input').value.trim();
-    var resp = await fetch('/api/chat', {
+    var apiKey = localStorage.getItem('pac_anthropic_key') || '';
+    if (!apiKey) throw new Error('Clé API manquante — saisis ta clé Anthropic en haut de la page.');
+
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 6000,
