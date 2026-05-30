@@ -1,5 +1,4 @@
-// api/chat.js — proxy Anthropic · CommonJS · Vercel Hobby compatible
-// sizeLimit 10mb pour les payloads texte longs
+// api/chat.js — proxy Anthropic · Vercel Node 18
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -13,7 +12,7 @@ module.exports = async function handler(req, res) {
   if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
 
   try {
-    const body = req.body;  // Vercel parse automatiquement le JSON
+    const body = req.body;
     const { model, system, messages, max_tokens } = body || {};
 
     if (!model || !Array.isArray(messages) || !max_tokens)
@@ -35,19 +34,18 @@ module.exports = async function handler(req, res) {
     const data = await upstream.json();
 
     if (!upstream.ok) {
-      console.error('[pac-generator] Anthropic error', upstream.status, JSON.stringify(data));
+      console.error('[pac-gen] Anthropic error', upstream.status, JSON.stringify(data).substring(0, 500));
       return res.status(upstream.status).json(data);
     }
 
     return res.status(200).json(data);
 
   } catch (err) {
-    console.error('[pac-generator] Proxy exception:', err.message);
-    return res.status(500).json({ error: 'Proxy error', message: err.message });
+    console.error('[pac-gen] Exception:', err.message);
+    return res.status(500).json({ error: err.message });
   }
 };
 
-// Augmenter la limite du body parser Vercel (défaut 1mb)
 module.exports.config = {
   api: { bodyParser: { sizeLimit: '10mb' } },
 };
