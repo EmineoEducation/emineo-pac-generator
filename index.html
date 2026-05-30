@@ -411,12 +411,12 @@ document.getElementById('btn-ingest').addEventListener('click', async function()
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 8000,
         system: INGEST_SYS,
         messages: [{
           role: 'user',
-          content: 'Voici le contenu du référentiel RACE :\n\n' + text.substring(0, 60000)
+          content: 'Voici le contenu du référentiel RACE :\n\n' + text.substring(0, 15000)
         }]
       })
     });
