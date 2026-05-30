@@ -1,27 +1,27 @@
-// api/chat.js — proxy Anthropic · Vercel Node 18
-
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST')   return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
 
   try {
-    const body = req.body;
-    const { model, system, messages, max_tokens } = body || {};
+    let body = req.body;
+    if (typeof body === 'string') body = JSON.parse(body);
 
-    if (!model || !Array.isArray(messages) || !max_tokens)
-      return res.status(400).json({ error: 'Missing fields: model, messages, max_tokens' });
+    const { model, system, messages, max_tokens } = body || {};
+    if (!model || !Array.isArray(messages) || !max_tokens) {
+      return res.status(400).json({ error: 'Missing required fields: model, messages, max_tokens' });
+    }
 
     const payload = { model, messages, max_tokens };
     if (system) payload.system = system;
 
-    const upstream = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -31,21 +31,19 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify(payload),
     });
 
-    const data = await upstream.json();
-
-    if (!upstream.ok) {
-      console.error('[pac-gen] Anthropic error', upstream.status, JSON.stringify(data).substring(0, 500));
-      return res.status(upstream.status).json(data);
+    const data = await response.json();
+    if (!response.ok) {
+      console.error('Anthropic API error:', data);
+      return res.status(response.status).json(data);
     }
 
     return res.status(200).json(data);
-
   } catch (err) {
-    console.error('[pac-gen] Exception:', err.message);
-    return res.status(500).json({ error: err.message });
+    console.error('Proxy error:', err);
+    return res.status(500).json({ error: 'Proxy error', message: err.message });
   }
-};
+}
 
-module.exports.config = {
+export const config = {
   api: { bodyParser: { sizeLimit: '10mb' } },
 };
