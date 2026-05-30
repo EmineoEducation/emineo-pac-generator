@@ -1,6 +1,9 @@
 {
   "functions": {
-    "api/chat.js": { "maxDuration": 60 }
+    "api/chat.js": {
+      "maxDuration": 30,
+      "runtime": "nodejs18.x"
+    }
   },
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1" },
