@@ -1,45 +1,44 @@
-# Éminéo — Générateur PAC
+# Générateur PAC — Éminéo Education
 
-Générateur de **Parcours Activation Compétences** (PAC) depuis un référentiel RNCP officiel (PDF France Compétences).
+Outil interne : ingère un référentiel RACE (PDF), laisse choisir un bloc, et produit un **PAC déployable** (Parcours Activation Compétences) pour l'univers Lumio Health.
 
-## Ce que ça fait
+## Déploiement du générateur (une fois)
 
-1. Tu uploades le PDF référentiel RNCP + plan de formation
-2. Tu sélectionnes le bloc certifiant cible (BC1 à BC6)
-3. Claude extrait les compétences verbatim et génère le spec JSON
-4. Le générateur produit 3 fichiers JSX prêts à déployer :
-   - `data.js` — Univers narratif Lumio + config PAC
-   - `app-livrable.jsx` — Formulaire compétences + jury IA RNCP
-   - `app-assistant.jsx` — Jefferson, guide procédural
+1. `git push` ce repo sur GitHub.
+2. Connecter à Vercel → déploiement statique, aucune variable d'environnement requise.
+3. Ouvrir l'URL, saisir la clé Anthropic (stockée en `localStorage`, jamais envoyée à un serveur tiers).
 
-## Stack
+> Le générateur appelle l'API Anthropic **directement depuis le navigateur**. Il n'a donc ni route serverless ni `vercel.json`.
 
-- HTML/JS vanilla — aucun framework, aucune build step
-- Vercel — déploiement auto depuis ce repo
-- Anthropic API — via proxy `api/chat.js` (clé côté serveur, pas dans le navigateur)
-- JSZip — téléchargement ZIP des fichiers générés
-
-## Déploiement
-
-### Vercel
-
-1. Importer ce repo dans Vercel
-2. Configurer la variable d'environnement : `ANTHROPIC_API_KEY=sk-ant-...`
-3. Deploy → URL automatique
-
-### Variable d'environnement requise
+## Architecture
 
 ```
-ANTHROPIC_API_KEY=sk-ant-...
+index.html        Générateur (3 écrans : ingestion RACE → choix bloc → sortie + ZIP)
+template/          Runtime PAC complet, embarqué tel quel dans chaque ZIP généré
+  index.html, styles.css, icons.jsx, main.jsx, desktop.jsx
+  app-mail/browser/pdf/voice/notes/slack/extras/trash.jsx
+  api/chat.js, api/session.js, vercel.json, package.json
 ```
 
-## Usage des fichiers générés
+Le ZIP produit = `template/*` + 3 fichiers générés pour le bloc :
 
-Les 3 fichiers JSX produits sont à déposer dans le repo du BC correspondant
-(`lumio-bc1`, `lumio-bc2`, etc.) avec les fichiers fixes (desktop, session, styles).
+- **`data.js`** — backbone narratif. `window.LUMIO_DATA` (toutes les clés lues par le runtime, donc **aucun crash au chargement**) + `window.PAC_CONFIG` (+ alias `PASS_CONFIG`).
+- **`app-livrable.jsx`** — `LivrableApp` générique : lit `PAC_CONFIG.competences`, compte les mots, soumet au jury via `/api/chat`.
+- **`app-assistant.jsx`** — `JeffersonApp` générique : guide par acte selon le timer.
 
-⚠️ Compléter le contenu narratif des documents fictifs dans `data.js` (marqués `// TODO`).
+Personnalisation étudiant : `data.js` utilise `{{PRENOM}} {{NOM}} {{EMAIL_ETUDIANT}}`, substitués en un seul passage par `applyStudent()` (main.jsx) à la connexion **et** à la reprise de session.
 
----
+## Déployer un PAC généré
 
-Éminéo Education · Direction des Programmes · Usage interne
+1. Créer le repo `lumio-bcX` avec **tout le contenu du ZIP**.
+2. `git push` → connecter à Vercel.
+3. Variables Vercel : `ANTHROPIC_API_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`.
+4. Modèle des appels IA du PAC : `claude-sonnet-4-5` (via `/api/chat`).
+
+## Limite connue — contenu narratif
+
+Le PAC généré **tourne immédiatement**, mais les apps chrome (Mail, PDF, Navigateur, presse) portent encore un contenu générique : les expéditeurs, distracteurs et documents y sont partiellement codés en dur (héritage de l'architecture actuelle, où le contenu vit dans les apps et pas seulement dans `data.js`).
+
+Avant mise en service d'un bloc, remplacer dans `data.js` toutes les balises **`[À COMPLÉTER]`** par le contenu réel.
+
+Le **vrai zéro-touch** (apps 100 % pilotées par `data.js`) suppose une refonte moteur des apps chrome — chiffrable séparément.

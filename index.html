@@ -454,16 +454,18 @@ document.getElementById('btn-ingest').addEventListener('click', async function()
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true'
       },
+      signal: AbortSignal.timeout(180000),
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 8000,
+        max_tokens: 16000,
         system: INGEST_SYS,
         messages: [{
           role: 'user',
-          content: 'Voici le contenu du référentiel RACE :\n\n' + text.substring(0, 15000)
+          content: 'Voici le contenu du référentiel RACE :\n\n' + (text.length > 120000 ? text.substring(0, 120000) : text)
         }]
       })
     });
+    if (text.length > 120000) ss(1, '⚠ RACE très long (' + text.length + ' car.) — tronqué à 120 000. Vérifie que tous les blocs sont extraits.', 'info');
 
     if (!resp.ok) {
       var errData = await resp.json().catch(function() { return {}; });
@@ -572,9 +574,10 @@ document.getElementById('btn-generate').addEventListener('click', async function
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true'
       },
+      signal: AbortSignal.timeout(180000),
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 6000,
+        max_tokens: 12000,
         system: SPEC_SYS,
         messages: [{ role: 'user', content: specPrompt(S.bloc, ctx) }]
       })
@@ -669,6 +672,24 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
     var spec = S.spec;
     var bloc = spec.meta.bloc.toLowerCase().replace(/[^a-z0-9]/g, '-');
     var zip  = new JSZip();
+
+    // ── Runtime fixe : embarqué depuis template/ (→ PAC déployable sans recopie) ──
+    var FIXED = [
+      'index.html', 'styles.css', 'icons.jsx', 'main.jsx', 'desktop.jsx',
+      'app-mail.jsx', 'app-browser.jsx', 'app-pdf.jsx', 'app-voice.jsx',
+      'app-notes.jsx', 'app-slack.jsx', 'app-extras.jsx', 'app-trash.jsx',
+      'api/chat.js', 'api/session.js', 'vercel.json', 'package.json'
+    ];
+    var missing = [];
+    for (var i = 0; i < FIXED.length; i++) {
+      try {
+        var r = await fetch('template/' + FIXED[i]);
+        if (!r.ok) { missing.push(FIXED[i]); continue; }
+        zip.file(FIXED[i], await r.text());
+      } catch (e) { missing.push(FIXED[i]); }
+    }
+
+    // ── Fichiers générés pour ce bloc ──
     zip.file('data.js',           S.files['data.js']);
     zip.file('app-livrable.jsx',  S.files['app-livrable.jsx']);
     zip.file('app-assistant.jsx', S.files['app-assistant.jsx']);
@@ -676,17 +697,18 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
     zip.file('README.md',
       '# PAC ' + spec.meta.bloc + ' — ' + spec.meta.intitule_bloc + '\n\n'
       + spec.meta.titre_rncp + '\n\n'
-      + '## Fichiers\n'
-      + '- `data.js` — Univers + config (compléter les documents fictifs // TODO)\n'
-      + '- `app-livrable.jsx` — Formulaire + jury IA\n'
-      + '- `app-assistant.jsx` — Jefferson\n\n'
       + '## Déploiement\n'
-      + '1. Copier dans repo `lumio-' + bloc + '`\n'
-      + '2. Compléter les documents fictifs dans data.js\n'
-      + '3. Copier fichiers fixes depuis BC1\n'
-      + '4. git push → Vercel\n\n'
-      + '⚠️ Remplacer {{PRENOM}} {{NOM}} {{EMAIL_ETUDIANT}} dans data.js\n'
+      + '1. Créer le repo `lumio-' + bloc + '` avec **tout le contenu de ce ZIP**.\n'
+      + '2. `git push` → connecter le repo à Vercel.\n'
+      + '3. Variables Vercel : `ANTHROPIC_API_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`.\n\n'
+      + '## À compléter (contenu narratif)\n'
+      + 'Le runtime tourne immédiatement, mais le contenu des apps chrome (emails, PDF, presse) est encore générique.\n'
+      + 'Remplacer dans `data.js` toutes les balises `[À COMPLÉTER]` par le contenu réel du bloc.\n'
+      + 'Les placeholders `{{PRENOM}} {{NOM}} {{EMAIL_ETUDIANT}}` sont substitués automatiquement à la connexion.\n'
+      + (missing.length ? '\n⚠️ Fichiers template manquants (à ajouter au repo générateur dans `template/`) : ' + missing.join(', ') + '\n' : '')
     );
+    if (missing.length) ss(3, '⚠ ' + missing.length + ' fichier(s) template manquant(s) — voir README. ZIP incomplet.', 'error');
+
     var blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -703,76 +725,291 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
 // ═══════════════════════════════════════════════════════════
 function buildData(spec) {
   var bloc  = spec.meta.bloc;
-  var docs  = (spec.documents_fictifs || []).map(function(d) { return '  // [Acte ' + d.acte + '] ' + d.id + ' (' + d.type + ') — ' + d.role_narratif; }).join('\n');
-  var comps = JSON.stringify((spec.competences || []).map(function(c) {
-    return { code:c.code, label:c.label, libelle:c.label.split(' ').slice(0,2).join(' '),
-             rncp:c.rncp, placeholder:c.placeholder, min:c.min_mots, motsCles:c.mots_cles, conseil:c.conseil };
-  }), null, 2);
-  var actes = [{n:1,label:"Ancrage terrain",debut:0,fin:20,couleur:"#7a756c"},{n:2,label:"Entrée dans l'affaire",debut:20,fin:50,couleur:"#1b4f8a"},{n:3,label:"Diagnostic",debut:50,fin:95,couleur:"#1a6641"},{n:4,label:"Production",debut:95,fin:175,couleur:"#c4420f"},{n:5,label:"Réflexion",debut:175,fin:210,couleur:"#7a756c"}];
-  return '// DATA · PAC ' + bloc + ' · ' + spec.meta.titre_rncp + '\n'
-    + '// ' + spec.moment_narratif.titre_affaire + ' · ' + spec.moment_narratif.date_fictive + '\n'
-    + '// ⚠️  Compléter le contenu narratif des documents fictifs (// TODO)\n\n'
-    + 'window.LUMIO_DATA = {\n'
-    + '  student: { name: "{{PRENOM}} {{NOM}}", role: "Consultant·e", email: "{{EMAIL_ETUDIANT}}", company: "Lumio Health" },\n'
-    + '  contexte: { title: "Fiche contexte · ' + spec.moment_narratif.date_fictive + '", body: ' + JSON.stringify(spec.moment_narratif.situation) + ' },\n\n'
-    + '  // Documents fictifs — TODO compléter le contenu de chacun\n'
-    + docs + '\n\n'
-    + '  slackMessages: {\n'
-    + '    initial: [{ from: "' + spec.commanditaire.nom + '", time: "08:32", text: ' + JSON.stringify(spec.moment_narratif.enjeu_central) + ', read: true }],\n'
-    + '    delayed: []\n'
-    + '  }\n'
-    + '};\n\n'
-    + 'window.PASS_CONFIG = {\n'
-    + '  bloc: ' + JSON.stringify(bloc) + ',\n'
-    + '  titre: ' + JSON.stringify(spec.meta.intitule_bloc) + ',\n'
-    + '  epreuve: ' + JSON.stringify(spec.meta.epreuve) + ',\n'
-    + '  deadline: ' + JSON.stringify(spec.moment_narratif.date_fictive + ' · 18h00') + ',\n'
-    + '  commanditaire: ' + JSON.stringify(spec.commanditaire.nom) + ',\n'
-    + '  dispositif: "PAC",\n'
-    + '  temps: ' + JSON.stringify(actes, null, 2) + ',\n'
-    + '  competences: ' + comps + '\n'
-    + '};\n';
+  var cmd   = spec.commanditaire || { nom: 'Le commanditaire', role: 'Commanditaire' };
+  var mn    = spec.moment_narratif || {};
+  var slug  = (cmd.nom || 'contact').toLowerCase().split(' ')[0].replace(/[^a-z0-9]/g, '');
+
+  // ── Documents fictifs → objets structurés (contenu = placeholder explicite à compléter) ──
+  var documents = (spec.documents_fictifs || []).map(function(d) {
+    return {
+      id: d.id, acte: d.acte, type: d.type,
+      expediteur: d.expediteur || cmd.nom,
+      objet: d.objet || '',
+      role_narratif: d.role_narratif || '',
+      body: '[À COMPLÉTER — ' + (d.role_narratif || d.type) + ']'
+    };
+  });
+
+  // ── Compétences mappées au schéma lu par app-livrable ──
+  var competences = (spec.competences || []).map(function(c) {
+    return {
+      code: c.code, label: c.label,
+      libelle: (c.label || '').split(' ').slice(0, 2).join(' '),
+      rncp: c.rncp, placeholder: c.placeholder,
+      min: c.min_mots || 80, motsCles: c.mots_cles || [], conseil: c.conseil || ''
+    };
+  });
+
+  // ── Actes : structure PAC standard (5 actes / 210 min) ──
+  var temps = [
+    { n: 1, label: 'Ancrage terrain',        debut: 0,   fin: 20,  couleur: '#7a756c' },
+    { n: 2, label: "Entrée dans l'affaire",  debut: 20,  fin: 50,  couleur: '#1b4f8a' },
+    { n: 3, label: 'Diagnostic',             debut: 50,  fin: 95,  couleur: '#1a6641' },
+    { n: 4, label: 'Production',             debut: 95,  fin: 175, couleur: '#c4420f' },
+    { n: 5, label: 'Réflexion',              debut: 175, fin: 210, couleur: '#7a756c' }
+  ];
+
+  // ── Prompt jury (utilisé par app-livrable générique) ──
+  var crit = (spec.jury_criteres_eliminatoires || []).map(function(c) { return '- ' + c; }).join('\n');
+  var efmt = (spec.competences || []).map(function(c) { return '### ' + c.code + ' — [Satisfaisant / Insuffisant / Absent]\nUne phrase de retour précise et exigeante.'; }).join('\n\n');
+  var juryPrompt = 'Tu es le jury certifiant du bloc ' + bloc + ' (' + (spec.meta.titre_rncp || '') + ').\n'
+    + 'Contexte : ' + (mn.titre_affaire || '') + ' · ' + (mn.date_fictive || '') + '.\n'
+    + 'Tu évalues une production étudiante aux critères RNCP stricts. Sois exigeant mais juste.\n'
+    + 'Critères éliminatoires :\n' + crit + '\n\n'
+    + 'Réponds EXACTEMENT dans ce format :\n' + efmt
+    + (spec.meta.note_reflexive ? '\n\n### Note réflexive — [Satisfaisant / Insuffisant / Absent]\nUne phrase.' : '')
+    + '\n\n## Niveau global\n**[Non conforme / Partiellement conforme / Conforme / Conforme avec distinction]**\n\n'
+    + '## Question de jury\nUne question dérangeante que tu poserais à l\'oral.';
+
+  // ── LUMIO_DATA : toutes les clés lues par le runtime (aucune absente → aucun crash) ──
+  var data = {
+    student: { name: '{{PRENOM}} {{NOM}}', role: 'Consultant·e externe', email: '{{EMAIL_ETUDIANT}}', company: 'Indépendant·e', initial: '?' },
+    contexte: {
+      title: 'Fiche contexte — Lumio Health',
+      subtitle: 'À lire en premier si vous découvrez l\'univers',
+      body: mn.situation || '[À COMPLÉTER — contexte Lumio pour ce bloc]'
+    },
+    briefEmail: {
+      from: cmd.nom, fromEmail: slug + '@lumio-health.com',
+      subject: mn.titre_affaire || ('Mission — ' + bloc),
+      date: mn.date_fictive || '',
+      body: '{{PRENOM}},\n\n' + (mn.situation || '') + '\n\nEnjeu : ' + (mn.enjeu_central || '') + '\n\n— ' + cmd.nom + '\n' + (cmd.role || '')
+    },
+    jakobEmail: {
+      from: cmd.nom, to: '{{PRENOM}} {{NOM}}', subject: mn.titre_affaire || '', date: mn.date_fictive || '',
+      tag: 'CONFIDENTIEL',
+      body: '[À COMPLÉTER — email confidentiel : ' + (mn.enjeu_central || '') + ']'
+    },
+    theoNote: { title: 'Note interne', date: mn.date_fictive || '', body: '[À COMPLÉTER — note interne confidentielle]' },
+    deckBoard: { title: 'Présentation', pages: [{ titre: '[À COMPLÉTER]', body: '[À COMPLÉTER — slides]' }] },
+    yassineVeille: { title: 'Veille concurrentielle', date: mn.date_fictive || '', body: '[À COMPLÉTER — veille]' },
+    camilleVerbatims: [{ id: 'v1', auteur: 'Terrain', duree: '0:45', transcript: '[À COMPLÉTER — verbatim terrain]' }],
+    pressArticles: [{ id: 'a1', media: 'Presse', titre: '[À COMPLÉTER]', date: mn.date_fictive || '', body: '[À COMPLÉTER — article]' }],
+    fausseUne: { media: 'Une fictive', titre: '[À COMPLÉTER]', date: mn.date_fictive || '', body: '[À COMPLÉTER]' },
+    documents: documents,
+    slackMessages: {
+      initial: [
+        { from: cmd.nom, time: '08:32', text: '{{PRENOM}} — ' + (mn.enjeu_central || 'on en parle ?'), read: true }
+      ],
+      delayed: [
+        { from: cmd.nom, time: '+15min', text: '{{PRENOM}}, dès que tu as une hypothèse solide, envoie-la moi ici.', channel: 'DM' }
+      ]
+    }
+  };
+
+  var cfg = {
+    bloc: bloc,
+    titre: spec.meta.intitule_bloc,
+    epreuve: spec.meta.epreuve,
+    deadline: (mn.date_fictive || '') + ' · 18h00',
+    commanditaire: cmd.nom,
+    dispositif: 'PAC',
+    note_reflexive: !!spec.meta.note_reflexive,
+    temps: temps,
+    competences: competences,
+    gabarits: {},
+    questionsPositionnement: [],
+    juryPrompt: juryPrompt,
+    livrableMinMots: (spec.livrable && spec.livrable.total_mots_min) || 520,
+    noteReflexiveMinMots: (spec.livrable && spec.livrable.note_reflexive_min) || 100
+  };
+
+  return '// ══════════════════════════════════════════════════════════════\n'
+    + '//  DATA · PAC ' + bloc + ' · ' + spec.meta.titre_rncp + '\n'
+    + '//  ' + (mn.titre_affaire || '') + ' · ' + (mn.date_fictive || '') + '\n'
+    + '//  ⚠️  Remplacer les [À COMPLÉTER] par le contenu narratif réel du bloc.\n'
+    + '//  ⚠️  Les placeholders {{PRENOM}} {{NOM}} {{EMAIL_ETUDIANT}} sont substitués à la connexion.\n'
+    + '// ══════════════════════════════════════════════════════════════\n\n'
+    + 'window.LUMIO_DATA = ' + JSON.stringify(data, null, 2) + ';\n\n'
+    + 'window.PAC_CONFIG = ' + JSON.stringify(cfg, null, 2) + ';\n'
+    + '// Alias de compatibilité (les apps existantes lisent encore PASS_CONFIG)\n'
+    + 'window.PASS_CONFIG = window.PAC_CONFIG;\n';
 }
 
 function buildLivrable(spec) {
-  var bloc  = spec.meta.bloc;
-  var crit  = (spec.jury_criteres_eliminatoires || []).map(function(c) { return '- ' + c; }).join('\n');
-  var efmt  = (spec.competences || []).map(function(c) { return '### ' + c.code + ' — [Satisfaisant / Insuffisant / Absent]\\nUne phrase de retour précise.'; }).join('\\n\\n');
-  return '// LIVRABLE APP · PAC ' + bloc + ' · ' + spec.meta.titre_rncp + '\n'
-    + '// Compétences : ' + (spec.competences || []).map(function(c) { return c.code; }).join(', ') + '\n'
-    + '// TODO : implémenter LivrableApp() selon le pattern app-livrable.jsx BC5\n\n'
-    + 'const wc = (t) => (t||\'\').trim() ? (t||\'\').trim().split(/\\s+/).length : 0;\n'
-    + 'const GLOBAL_MIN = ' + spec.livrable.total_mots_min + ';\n\n'
-    + 'const JURY_PROMPT = `Tu es jury certifiant ' + bloc + '.\n'
-    + 'Contexte : ' + spec.moment_narratif.titre_affaire + ' · ' + spec.moment_narratif.date_fictive + '.\n'
-    + 'Critères éliminatoires :\n' + crit + '\n'
-    + 'Format STRICT :\n' + efmt
-    + (spec.meta.note_reflexive ? '\n\n### Note réflexive — [Satisfaisant / Insuffisant / Absent]\nUne phrase.' : '')
-    + '\n\n## Niveau global\n**[Non conforme / Partiellement conforme / Conforme / Conforme avec distinction]**\n\n## Question de jury\nUne question dérangeante.`;\n\n'
-    + '// Référence : app-livrable.jsx du repo lumio-bc5\n';
+  var bloc = spec.meta.bloc;
+  var head = '// ══════════════════════════════════════════════════════════════\n'
+    + '//  LIVRABLE APP · PAC ' + bloc + ' · ' + spec.meta.titre_rncp + '\n'
+    + '//  Composant générique — lit tout depuis window.PAC_CONFIG (competences, juryPrompt).\n'
+    + '// ══════════════════════════════════════════════════════════════\n\n';
+  // Composant constant : aucune interpolation par bloc, tout vient de PAC_CONFIG au runtime.
+  var comp = [
+'const { useState: useLivState } = React;',
+'const _wc = (t) => (t || "").trim() ? (t || "").trim().split(/\\s+/).length : 0;',
+'',
+'function LivrableApp() {',
+'  const cfg = window.PAC_CONFIG || {};',
+'  const comps = cfg.competences || [];',
+'  const [answers, setAnswers] = useLivState({});',
+'  const [reflexive, setReflexive] = useLivState("");',
+'  const [sending, setSending] = useLivState(false);',
+'  const [verdict, setVerdict] = useLivState("");',
+'  const [err, setErr] = useLivState("");',
+'',
+'  const set = (code, v) => setAnswers(a => ({ ...a, [code]: v }));',
+'  const totalMots = comps.reduce((n, c) => n + _wc(answers[c.code]), 0) + _wc(reflexive);',
+'  const allMin = comps.every(c => _wc(answers[c.code]) >= (c.min || 0));',
+'  const canSubmit = allMin && totalMots >= (cfg.livrableMinMots || 0) && !sending;',
+'',
+'  const submit = async () => {',
+'    setSending(true); setErr(""); setVerdict("");',
+'    try {',
+'      let prod = comps.map(c => "### " + c.code + " — " + c.label + "\\n" + (answers[c.code] || "(vide)")).join("\\n\\n");',
+'      if (cfg.note_reflexive) prod += "\\n\\n### Note réflexive\\n" + (reflexive || "(vide)");',
+'      const resp = await fetch("/api/chat", {',
+'        method: "POST", headers: { "Content-Type": "application/json" },',
+'        body: JSON.stringify({',
+'          model: "claude-sonnet-4-5", max_tokens: 1200,',
+'          system: cfg.juryPrompt || "Tu es le jury. Évalue la production.",',
+'          messages: [{ role: "user", content: "Voici la production à évaluer :\\n\\n" + prod }]',
+'        })',
+'      });',
+'      if (!resp.ok) throw new Error("Le jury est indisponible (erreur " + resp.status + ").");',
+'      const data = await resp.json();',
+'      const txt = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");',
+'      setVerdict(txt || "(réponse vide)");',
+'      if (window.__onLivrableSubmitted) window.__onLivrableSubmitted(answers, reflexive, txt);',
+'    } catch (e) { setErr(e.message); }',
+'    setSending(false);',
+'  };',
+'',
+'  return (',
+'    <div style={{ height: "100%", overflowY: "auto", background: "#f7f4ef", padding: "22px 26px", fontFamily: "var(--font-sans)" }}>',
+'      <div style={{ maxWidth: 760, margin: "0 auto" }}>',
+'        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.2em", color: "var(--accent)", textTransform: "uppercase" }}>{cfg.dispositif || "PAC"} · {cfg.bloc} · Livrable</div>',
+'        <h1 style={{ fontFamily: "var(--font-display)", fontSize: 24, margin: "6px 0 4px" }}>{cfg.epreuve || cfg.titre}</h1>',
+'        <div style={{ fontSize: 12, color: "var(--ink-mute)", marginBottom: 18 }}>Commanditaire : {cfg.commanditaire} · Échéance : {cfg.deadline}</div>',
+'',
+'        {comps.map(c => {',
+'          const n = _wc(answers[c.code]); const ok = n >= (c.min || 0);',
+'          return (',
+'            <div key={c.code} style={{ background: "white", borderRadius: 10, padding: "16px 18px", marginBottom: 14, border: "1px solid var(--rule)" }}>',
+'              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>',
+'                <span style={{ fontWeight: 700, fontSize: 14 }}>{c.code} — {c.label}</span>',
+'                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: ok ? "#1a6641" : "var(--ink-faint)" }}>{n}/{c.min} mots</span>',
+'              </div>',
+'              <div style={{ fontSize: 12, color: "var(--ink-mute)", marginBottom: 8, lineHeight: 1.5 }}>{c.placeholder}</div>',
+'              <textarea value={answers[c.code] || ""} onChange={e => set(c.code, e.target.value)} rows={5}',
+'                style={{ width: "100%", border: "1px solid var(--rule)", borderRadius: 7, padding: "9px 11px", fontSize: 13, fontFamily: "inherit", lineHeight: 1.55, resize: "vertical", outline: "none" }} />',
+'              {c.conseil ? <div style={{ fontSize: 11, color: "var(--ink-faint)", marginTop: 6, fontStyle: "italic" }}>💡 {c.conseil}</div> : null}',
+'            </div>',
+'          );',
+'        })}',
+'',
+'        {cfg.note_reflexive ? (',
+'          <div style={{ background: "white", borderRadius: 10, padding: "16px 18px", marginBottom: 14, border: "1px solid var(--rule)" }}>',
+'            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Note réflexive <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-faint)" }}>({_wc(reflexive)}/{cfg.noteReflexiveMinMots} mots)</span></div>',
+'            <textarea value={reflexive} onChange={e => setReflexive(e.target.value)} rows={6}',
+'              style={{ width: "100%", border: "1px solid var(--rule)", borderRadius: 7, padding: "9px 11px", fontSize: 13, fontFamily: "inherit", lineHeight: 1.55, resize: "vertical", outline: "none" }} />',
+'          </div>',
+'        ) : null}',
+'',
+'        {err ? <div style={{ color: "var(--accent)", fontSize: 12, marginBottom: 10 }}>{err}</div> : null}',
+'',
+'        <button onClick={canSubmit ? submit : undefined} disabled={!canSubmit}',
+'          style={{ background: canSubmit ? "#1b3a6b" : "rgba(20,24,36,0.1)", color: canSubmit ? "white" : "var(--ink-faint)", border: "none", borderRadius: 7, padding: "11px 24px", fontSize: 13, fontWeight: 600, cursor: canSubmit ? "pointer" : "not-allowed", fontFamily: "inherit" }}>',
+'          {sending ? "Le jury évalue…" : "Soumettre au jury →"}',
+'        </button>',
+'',
+'        {verdict ? (',
+'          <div style={{ marginTop: 22, background: "white", borderRadius: 10, padding: "18px 20px", border: "1px solid var(--rule)", whiteSpace: "pre-wrap", fontSize: 13, lineHeight: 1.6 }}>',
+'            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.15em", color: "var(--accent)", textTransform: "uppercase", marginBottom: 10 }}>Retour du jury</div>',
+'            {verdict}',
+'          </div>',
+'        ) : null}',
+'      </div>',
+'    </div>',
+'  );',
+'}',
+'',
+'window.LUMIO_APPS = window.LUMIO_APPS || {};',
+'window.LUMIO_APPS.livrable = LivrableApp;'
+  ].join('\n');
+  return head + comp + '\n';
 }
 
 function buildAssistant(spec) {
   var bloc = spec.meta.bloc;
-  var cmd  = spec.commanditaire.nom;
-  var tens = (spec.jury_criteres_eliminatoires || []).slice(0, 4).map(function(t) { return '// - ' + t; }).join('\n');
-  return '// JEFFERSON · PAC ' + bloc + '\n'
-    + '// ' + spec.moment_narratif.titre_affaire + '\n'
-    + '// TODO : implémenter JeffersonApp() selon le pattern app-assistant.jsx BC5\n\n'
-    + '// Tensions du cas :\n' + tens + '\n\n'
-    + '// Commanditaire : ' + cmd + '\n\n'
-    + 'function buildJeffersonPrompt(name, elapsed) {\n'
-    + '  var prenom = (name||\'\').split(\' \')[0] || \'vous\';\n'
-    + '  var left   = Math.max(0, 210 - elapsed);\n'
-    + '  var phase, obj, tools, action;\n'
-    + '  if      (elapsed < 20)  { phase=\'Acte 1\'; obj=\'Observer.\';         tools=\'Mail, Finder\';             action=\'Ouvrir Mail. Brief de ' + cmd + '.\'; }\n'
-    + '  else if (elapsed < 50)  { phase=\'Acte 2\'; obj=\'Lire les docs.\';    tools=\'PDF, Mail, Nav, Mémos\';   action=\'PDF Viewer en premier.\'; }\n'
-    + '  else if (elapsed < 95)  { phase=\'Acte 3\'; obj=\'Diagnostic Slack.\'; tools=\'Slack, Notes\';            action=\'Slack → ' + cmd + '. 2 échanges débloquent le Livrable.\'; }\n'
-    + '  else if (elapsed < 175) { phase=\'Acte 4\'; obj=\'Rédiger ' + bloc + '.\';   tools=\'App Livrable\';           action=\'Ouvrir Livrable. Dans l\\\'ordre.\'; }\n'
-    + '  else                    { phase=\'Acte 5\'; obj=\'' + (spec.meta.note_reflexive ? 'Note réflexive + soumettre.' : 'Relire + soumettre.') + '\'; tools=\'App Livrable\'; action=\'' + (spec.meta.note_reflexive ? 'Onglet Réflexive. Soumettre.' : 'Soumettre.') + '\'; }\n'
-    + '  return \'Guide PAC ' + bloc + '. \' + prenom + \' · \' + elapsed + \'min · \' + left + \'min restantes. \' + phase + \' — \' + obj + \' Outils : \' + tools + \'. Action : \' + action;\n'
-    + '}\n\n'
-    + '// Référence : app-assistant.jsx du repo lumio-bc5\n';
+  var head = '// ══════════════════════════════════════════════════════════════\n'
+    + '//  JEFFERSON · PAC ' + bloc + '\n'
+    + '//  Composant générique — guide par acte + chat. Lit window.PAC_CONFIG.\n'
+    + '// ══════════════════════════════════════════════════════════════\n\n';
+  var comp = [
+'const { useState: useJefState } = React;',
+'',
+'function buildJeffersonPrompt(name, elapsed) {',
+'  const cfg = window.PAC_CONFIG || {};',
+'  const prenom = (name || "").split(" ")[0] || "vous";',
+'  const cmd = cfg.commanditaire || "le commanditaire";',
+'  const left = Math.max(0, 210 - elapsed);',
+'  let phase, obj, action;',
+'  if      (elapsed < 20)  { phase = "Acte 1 · Ancrage";      obj = "Observer, lire le brief."; action = "Ouvrir Mail. Lire le brief de " + cmd + "."; }',
+'  else if (elapsed < 50)  { phase = "Acte 2 · Affaire";      obj = "Lire tous les documents."; action = "PDF, Mail, Navigateur, Mémos."; }',
+'  else if (elapsed < 95)  { phase = "Acte 3 · Diagnostic";   obj = "Tester une hypothèse.";    action = "Slack → " + cmd + ". Sa réaction débloque le Livrable."; }',
+'  else if (elapsed < 175) { phase = "Acte 4 · Production";   obj = "Rédiger le livrable " + cfg.bloc + "."; action = "Ouvrir le Livrable. Traiter chaque compétence dans l\'ordre."; }',
+'  else                    { phase = "Acte 5 · Réflexion";    obj = (cfg.note_reflexive ? "Note réflexive puis soumettre." : "Relire puis soumettre."); action = (cfg.note_reflexive ? "Onglet réflexif, puis Soumettre." : "Soumettre au jury."); }',
+'  return "Tu es Jefferson, le guide du PAC " + cfg.bloc + ". Tu dis QUOI FAIRE, jamais QUOI PENSER. " +',
+'    "Étudiant·e : " + prenom + ". Temps écoulé : " + elapsed + " min, " + left + " min restantes. " +',
+'    "Phase : " + phase + ". Objectif : " + obj + " Action immédiate : " + action + " " +',
+'    "Réponds en 2 phrases maximum, concret, sans donner la réponse au livrable.";',
+'}',
+'',
+'function JeffersonApp() {',
+'  const [msgs, setMsgs] = useJefState([{ role: "assistant", text: "Salut " + ((window.LUMIO_DATA && window.LUMIO_DATA.student && window.LUMIO_DATA.student.name || "").split(" ")[0] || "") + " ! Je te dis quoi faire à chaque étape. Pose-moi une question si tu bloques." }]);',
+'  const [draft, setDraft] = useJefState("");',
+'  const [sending, setSending] = useJefState(false);',
+'',
+'  const send = async () => {',
+'    const q = draft.trim(); if (!q || sending) return;',
+'    setDraft(""); setMsgs(m => [...m, { role: "user", text: q }]); setSending(true);',
+'    try {',
+'      const elapsed = window.LUMIO_TIMER_START ? Math.floor((Date.now() - window.LUMIO_TIMER_START) / 60000) : 0;',
+'      const name = (window.LUMIO_DATA && window.LUMIO_DATA.student && window.LUMIO_DATA.student.name) || "";',
+'      const resp = await fetch("/api/chat", {',
+'        method: "POST", headers: { "Content-Type": "application/json" },',
+'        body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 300, system: buildJeffersonPrompt(name, elapsed), messages: [{ role: "user", content: q }] })',
+'      });',
+'      const data = await resp.json();',
+'      const txt = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("") || "…";',
+'      setMsgs(m => [...m, { role: "assistant", text: txt }]);',
+'    } catch (e) { setMsgs(m => [...m, { role: "assistant", text: "Je suis momentanément indisponible." }]); }',
+'    setSending(false);',
+'  };',
+'',
+'  return (',
+'    <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg)", fontFamily: "var(--font-sans)" }}>',
+'      <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>',
+'        {msgs.map((m, i) => (',
+'          <div key={i} style={{ textAlign: m.role === "user" ? "right" : "left", marginBottom: 10 }}>',
+'            <span style={{ display: "inline-block", maxWidth: "85%", padding: "8px 12px", borderRadius: 12, fontSize: 13, lineHeight: 1.5,',
+'              background: m.role === "user" ? "#1a6641" : "white", color: m.role === "user" ? "white" : "var(--ink)", border: m.role === "user" ? "none" : "1px solid var(--rule)" }}>{m.text}</span>',
+'          </div>',
+'        ))}',
+'      </div>',
+'      <div style={{ padding: "10px 14px", borderTop: "1px solid var(--rule)", display: "flex", gap: 8 }}>',
+'        <input value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === "Enter") send(); }}',
+'          placeholder="Demander à Jefferson…" style={{ flex: 1, border: "1px solid var(--rule)", borderRadius: 18, padding: "8px 14px", fontSize: 13, outline: "none", fontFamily: "inherit" }} />',
+'        <button onClick={send} disabled={!draft.trim() || sending}',
+'          style={{ width: 34, height: 34, borderRadius: "50%", border: "none", background: draft.trim() && !sending ? "#1a6641" : "rgba(11,43,45,0.1)", color: "white", cursor: draft.trim() && !sending ? "pointer" : "default", fontSize: 15 }}>↑</button>',
+'      </div>',
+'    </div>',
+'  );',
+'}',
+'',
+'window.LUMIO_APPS = window.LUMIO_APPS || {};',
+'window.LUMIO_APPS.jefferson = JeffersonApp;'
+  ].join('\n');
+  return head + comp + '\n';
 }
 </script>
 </body>
