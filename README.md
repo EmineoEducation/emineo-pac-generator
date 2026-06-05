@@ -32,7 +32,7 @@ Personnalisation étudiant : `data.js` utilise `{{PRENOM}} {{NOM}} {{EMAIL_ETUDI
 
 1. Créer le repo `lumio-bcX` avec **tout le contenu du ZIP**.
 2. `git push` → connecter à Vercel.
-3. Variables Vercel : `ANTHROPIC_API_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`.
+3. Variables Vercel : `ANTHROPIC_API_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `RESEND_API_KEY` (+ option `PORTFOLIO_FROM`).
 4. Modèle des appels IA du PAC : `claude-sonnet-4-5` (via `/api/chat`).
 
 ## Limite connue — contenu narratif
