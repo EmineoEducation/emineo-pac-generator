@@ -59,7 +59,7 @@ function SlackApp({ openChannel }) {
       const resume = Object.entries(sections || {}).map(([code, text]) => `${code} : ${(text || '').substring(0, 300)}`).join('\n\n');
       const prompt = `${prompts.commanditaireLivrable || 'Tu réagis à la production soumise en 2-3 messages courts séparés par ---SPLIT---.'}\n\nProduction reçue :\n${resume}`;
       try {
-        const resp = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 400, messages: [{ role: 'user', content: prompt }] }) });
+        const resp = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 400, messages: [{ role: 'user', content: prompt }] }) });
         const data = await resp.json();
         const raw = (data.content || []).map(b => b.text || '').join('') || '';
         await pushAiReplies(raw, 600);
@@ -93,7 +93,7 @@ function SlackApp({ openChannel }) {
         try {
           const history = (chatHistory[aiId] || []).filter(m => !m.typing).map(m => `${m.isMe ? studentFirst : ai.name.split(' ')[0]}: ${m.text}`).join('\n');
           const userPrompt = `${history}\n${studentFirst}: ${text}\n\nRéponds maintenant en tant que ${ai.name} (2-3 messages courts séparés par ---SPLIT---).`;
-          const resp = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 500, system: prompts.commanditaire || ('Tu es ' + ai.name + '.'), messages: [{ role: 'user', content: userPrompt }] }) });
+          const resp = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 500, system: prompts.commanditaire || ('Tu es ' + ai.name + '.'), messages: [{ role: 'user', content: userPrompt }] }) });
           if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `HTTP ${resp.status}`); }
           const data = await resp.json();
           const raw = (data.content || []).map(b => b.text || '').join('') || '';

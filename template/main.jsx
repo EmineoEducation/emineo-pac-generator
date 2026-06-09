@@ -30,9 +30,14 @@ window.LUMIO_SESSION = {
 
 // Substitue {{PRENOM}} {{NOM}} {{EMAIL_ETUDIANT}} PARTOUT dans LUMIO_DATA, en un seul passage.
 function applyStudent(fullName, email) {
-  const prenom = (fullName || '').split(' ')[0] || '';
-  const nom    = (fullName || '').split(' ').slice(1).join(' ');
-  const map = { '{{PRENOM}}': prenom, '{{NOM}}': nom, '{{EMAIL_ETUDIANT}}': email || '' };
+  // Échappe les seules entrées libres de l'étudiant (vecteur XSS via dangerouslySetInnerHTML).
+  // Le narratif de data.js, lui, reste du HTML riche contrôlé et n'est pas touché.
+  const escHtml = (s) => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const prenom = escHtml((fullName || '').split(' ')[0] || '');
+  const nom    = escHtml((fullName || '').split(' ').slice(1).join(' '));
+  const map = { '{{PRENOM}}': prenom, '{{NOM}}': nom, '{{EMAIL_ETUDIANT}}': escHtml(email || '') };
   try {
     const json = JSON.stringify(window.LUMIO_DATA)
       .replace(/\{\{PRENOM\}\}|\{\{NOM\}\}|\{\{EMAIL_ETUDIANT\}\}/g, m => map[m]);
