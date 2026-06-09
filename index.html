@@ -7,6 +7,25 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   PAC_MODELS — POINT DE VÉRITÉ UNIQUE DES IDs DE MODÈLE
+   Tout appel IA (générateur + fichiers générés + runtime) lit ICI.
+   IDs versionnés et validés (jamais d'alias). Vérifié 2026-06-09.
+   - JURY/LIVRABLE  → Sonnet (raisonnement, jugement RNCP)
+   - JEFFERSON      → Haiku  (guidage rapide, faible coût)
+   - INGEST (générateur, analyse PDF RACE) → Haiku
+   - SPEC  (générateur, génération de spec) → Sonnet
+   ⚠ claude-sonnet-4-5 retiré le 2026-06-15 — NE JAMAIS réintroduire.
+   ════════════════════════════════════════════════════════════════════ */
+var PAC_MODELS = {
+  JURY:     'claude-sonnet-4-6',
+  JEFFERSON:'claude-haiku-4-5-20251001',
+  INGEST:   'claude-haiku-4-5-20251001',
+  SPEC:     'claude-sonnet-4-6'
+};
+</script>
 <style>
 :root{--ink:#0D3B36;--mint:#8FF2C2;--mint-soft:#E8FBF1;--mint-mid:#C7F4DD;--green:#1F6F5C;--paper:#FAFAF7;--muted:#6B7B78;--rule:rgba(13,59,54,.1);--red:#C0392B;}
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -456,7 +475,7 @@ document.getElementById('btn-ingest').addEventListener('click', async function()
       },
       signal: AbortSignal.timeout(180000),
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: PAC_MODELS.INGEST,
         max_tokens: 16000,
         system: INGEST_SYS,
         messages: [{
@@ -576,7 +595,7 @@ document.getElementById('btn-generate').addEventListener('click', async function
       },
       signal: AbortSignal.timeout(180000),
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: PAC_MODELS.SPEC,
         max_tokens: 12000,
         system: SPEC_SYS,
         messages: [{ role: 'user', content: specPrompt(S.bloc, ctx) }]
@@ -607,6 +626,68 @@ document.getElementById('btn-generate').addEventListener('click', async function
 document.getElementById('btn-back').addEventListener('click', function() { goTo(2); });
 
 // ═══════════════════════════════════════════════════════════
+//  GATE DE VALIDATION BLOQUANT — aucun ZIP cassé ne sort d'ici
+//  Renvoie { ok:bool, errors:[], checks:[{name, ok, detail}] }
+// ═══════════════════════════════════════════════════════════
+var PAC_CONFIG_REQUIRED = ['formation','code_rncp','accroche','role_etudiant','titre_affaire'];
+
+function validateJSX(filename, src) {
+  try {
+    Babel.transform(src, { presets: ['react'], filename: filename });
+    return { name: filename + ' · transpile JSX', ok: true, detail: 'Babel OK' };
+  } catch (e) {
+    return { name: filename + ' · transpile JSX', ok: false, detail: String(e.message).split('\n')[0] };
+  }
+}
+
+function validateDataJs(src) {
+  // Exécute data.js dans un scope isolé, capture window.LUMIO_DATA + window.PAC_CONFIG
+  var out = { name: 'data.js · exécution + clés PAC_CONFIG', ok: false, detail: '' };
+  try {
+    var sandbox = { LUMIO_DATA: undefined, PAC_CONFIG: undefined, PASS_CONFIG: undefined, console: console };
+    var fn = new Function('window', src + '\n;return { LUMIO_DATA: window.LUMIO_DATA, PAC_CONFIG: window.PAC_CONFIG, PASS_CONFIG: window.PASS_CONFIG };');
+    var res = fn(sandbox);
+    if (!res.LUMIO_DATA || typeof res.LUMIO_DATA !== 'object') {
+      out.detail = 'window.LUMIO_DATA absent ou non-objet après exécution'; return out;
+    }
+    var cfg = res.PAC_CONFIG || res.PASS_CONFIG;
+    if (!cfg) { out.detail = 'window.PAC_CONFIG (ni PASS_CONFIG) défini'; return out; }
+    var missing = PAC_CONFIG_REQUIRED.filter(function(k){ return cfg[k] == null || cfg[k] === ''; });
+    if (missing.length) { out.detail = 'Clés PAC_CONFIG manquantes/vides : ' + missing.join(', '); return out; }
+    out.ok = true; out.detail = 'LUMIO_DATA + ' + PAC_CONFIG_REQUIRED.length + ' clés PAC_CONFIG présentes';
+    return out;
+  } catch (e) {
+    out.detail = 'Erreur exécution data.js : ' + String(e.message).split('\n')[0];
+    return out;
+  }
+}
+
+function validateModelResidue(files) {
+  // Garde-fou anti-régression : aucun ID retiré ne doit fuiter dans les fichiers générés
+  var forbidden = ['claude-sonnet-4-5','claude-3-','claude-sonnet-4-20250514','claude-opus-4-20250514'];
+  var hits = [];
+  Object.keys(files).forEach(function(nm){
+    forbidden.forEach(function(id){ if (files[nm].indexOf(id) !== -1) hits.push(nm + ' → ' + id); });
+  });
+  return {
+    name: 'IDs modèle · aucun identifiant retiré',
+    ok: hits.length === 0,
+    detail: hits.length ? 'Résidu interdit : ' + hits.join(' ; ') : 'Aucun ID retiré détecté'
+  };
+}
+
+function validatePAC(files) {
+  var checks = [
+    validateDataJs(files['data.js']),
+    validateJSX('app-livrable.jsx', files['app-livrable.jsx']),
+    validateJSX('app-assistant.jsx', files['app-assistant.jsx']),
+    validateModelResidue(files)
+  ];
+  var errors = checks.filter(function(c){ return !c.ok; }).map(function(c){ return c.name + ' — ' + c.detail; });
+  return { ok: errors.length === 0, errors: errors, checks: checks };
+}
+
+// ═══════════════════════════════════════════════════════════
 //  RENDU OUTPUT
 // ═══════════════════════════════════════════════════════════
 function renderOutput() {
@@ -624,7 +705,26 @@ function renderOutput() {
       + '<button type="button" class="output-file-btn" onclick="cpFile(\'' + nm + '\')">Copier</button>';
     fl.appendChild(it);
   });
-  document.getElementById('btn-zip').disabled = false;
+  // ── GATE BLOQUANT : le ZIP ne s'active QUE si tout passe ──
+  var V = validatePAC(S.files);
+  var gatePanel = document.createElement('div');
+  gatePanel.style.cssText = 'margin:14px 0;padding:14px 16px;border-radius:10px;border:1px solid ' + (V.ok ? 'rgba(31,111,92,.3)' : 'var(--red)') + ';background:' + (V.ok ? 'var(--mint-soft)' : 'rgba(192,57,43,.06)') + ';';
+  var rows = V.checks.map(function(c){
+    return '<div style="display:flex;gap:8px;align-items:flex-start;font-size:11.5px;line-height:1.5;margin:3px 0;">'
+      + '<span>' + (c.ok ? '✅' : '❌') + '</span>'
+      + '<span style="flex:1"><b>' + esc(c.name) + '</b><br><span style="color:var(--muted)">' + esc(c.detail) + '</span></span></div>';
+  }).join('');
+  gatePanel.innerHTML = '<div style="font-family:\'Manrope\';font-weight:700;font-size:12px;margin-bottom:8px;">'
+    + (V.ok ? '✓ Validation passée — bloc déployable' : '✗ Validation échouée — ZIP bloqué')
+    + '</div>' + rows;
+  fl.parentNode.insertBefore(gatePanel, fl.nextSibling);
+
+  var zb = document.getElementById('btn-zip');
+  zb.disabled = !V.ok;
+  if (!V.ok) {
+    zb.title = 'Corrige les erreurs de validation avant de télécharger';
+    ss(3, '⚠ ' + V.errors.length + ' erreur(s) de validation — le ZIP est bloqué. Voir le détail ci-dessus.', 'error');
+  }
 
   var oc = document.getElementById('output-content');
   oc.innerHTML = '';
@@ -708,7 +808,11 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
       + 'Les placeholders `{{PRENOM}} {{NOM}} {{EMAIL_ETUDIANT}}` sont substitués automatiquement à la connexion.\n'
       + (missing.length ? '\n⚠️ Fichiers template manquants (à ajouter au repo générateur dans `template/`) : ' + missing.join(', ') + '\n' : '')
     );
-    if (missing.length) ss(3, '⚠ ' + missing.length + ' fichier(s) template manquant(s) — voir README. ZIP incomplet.', 'error');
+    if (missing.length) {
+      ss(3, '❌ ' + missing.length + ' fichier(s) runtime manquant(s) : ' + missing.join(', ') + '. ZIP ANNULÉ — déploiement impossible.', 'error');
+      btn.disabled = false; btn.innerHTML = '⬇ Télécharger le ZIP';
+      return;
+    }
 
     var blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
     var a = document.createElement('a');
@@ -871,7 +975,7 @@ function buildLivrable(spec) {
 '      const resp = await fetch("/api/chat", {',
 '        method: "POST", headers: { "Content-Type": "application/json" },',
 '        body: JSON.stringify({',
-'          model: "claude-sonnet-4-5", max_tokens: 1200,',
+'          model: "' + PAC_MODELS.JURY + '", max_tokens: 1200,',
 '          system: cfg.juryPrompt || "Tu es le jury. Évalue la production.",',
 '          messages: [{ role: "user", content: "Voici la production à évaluer :\\n\\n" + prod }]',
 '        })',
@@ -1008,7 +1112,7 @@ function buildAssistant(spec) {
 '      const name = (window.LUMIO_DATA && window.LUMIO_DATA.student && window.LUMIO_DATA.student.name) || "";',
 '      const resp = await fetch("/api/chat", {',
 '        method: "POST", headers: { "Content-Type": "application/json" },',
-'        body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 300, system: buildJeffersonPrompt(name, elapsed), messages: [{ role: "user", content: q }] })',
+'        body: JSON.stringify({ model: "' + PAC_MODELS.JEFFERSON + '", max_tokens: 300, system: buildJeffersonPrompt(name, elapsed), messages: [{ role: "user", content: q }] })',
 '      });',
 '      const data = await resp.json();',
 '      const txt = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("") || "…";',
