@@ -629,7 +629,7 @@ document.getElementById('btn-back').addEventListener('click', function() { goTo(
 //  GATE DE VALIDATION BLOQUANT — aucun ZIP cassé ne sort d'ici
 //  Renvoie { ok:bool, errors:[], checks:[{name, ok, detail}] }
 // ═══════════════════════════════════════════════════════════
-var PAC_CONFIG_REQUIRED = ['formation','code_rncp','accroche','role_etudiant','titre_affaire'];
+var PAC_CONFIG_REQUIRED = ['bloc','titre','epreuve','temps','competences','juryPrompt'];
 
 function validateJSX(filename, src) {
   try {
@@ -643,6 +643,7 @@ function validateJSX(filename, src) {
 function validateDataJs(src) {
   // Exécute data.js dans un scope isolé, capture window.LUMIO_DATA + window.PAC_CONFIG
   var out = { name: 'data.js · exécution + clés PAC_CONFIG', ok: false, detail: '' };
+  if (!src || typeof src !== 'string') { out.detail = 'data.js absent ou non généré'; return out; }
   try {
     var sandbox = { LUMIO_DATA: undefined, PAC_CONFIG: undefined, PASS_CONFIG: undefined, console: console };
     var fn = new Function('window', src + '\n;return { LUMIO_DATA: window.LUMIO_DATA, PAC_CONFIG: window.PAC_CONFIG, PASS_CONFIG: window.PASS_CONFIG };');
@@ -652,9 +653,14 @@ function validateDataJs(src) {
     }
     var cfg = res.PAC_CONFIG || res.PASS_CONFIG;
     if (!cfg) { out.detail = 'window.PAC_CONFIG (ni PASS_CONFIG) défini'; return out; }
-    var missing = PAC_CONFIG_REQUIRED.filter(function(k){ return cfg[k] == null || cfg[k] === ''; });
+    var missing = PAC_CONFIG_REQUIRED.filter(function(k){
+      var v = cfg[k];
+      if (v == null || v === '') return true;
+      if (Array.isArray(v) && v.length === 0) return true;  // temps/competences vides = bloc non fonctionnel
+      return false;
+    });
     if (missing.length) { out.detail = 'Clés PAC_CONFIG manquantes/vides : ' + missing.join(', '); return out; }
-    out.ok = true; out.detail = 'LUMIO_DATA + ' + PAC_CONFIG_REQUIRED.length + ' clés PAC_CONFIG présentes';
+    out.ok = true; out.detail = 'LUMIO_DATA + ' + cfg.competences.length + ' compétence(s), ' + cfg.temps.length + ' acte(s)';
     return out;
   } catch (e) {
     out.detail = 'Erreur exécution data.js : ' + String(e.message).split('\n')[0];
