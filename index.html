@@ -581,11 +581,25 @@ function selectBloc(b) {
 // ═══════════════════════════════════════════════════════════
 var SPEC_SYS = 'Tu es un ingénieur pédagogique et développeur expert PAC (Parcours Activation Compétences — Éminéo). Réponds UNIQUEMENT avec le JSON brut demandé, sans backticks ni texte autour.';
 
-function specPrompt(b, ctx) {
-  return 'BLOC :\n' + JSON.stringify(b, null, 2)
+function specPrompt(b, ctx, race) {
+  var rTitre  = (race && race.titre) ? race.titre : '?';
+  var rCode   = (race && race.code_rncp) ? race.code_rncp : '?';
+  var rNiveau = (race && race.niveau) ? race.niveau : '?';
+  var rOrg    = (race && race.organisme_certificateur) ? race.organisme_certificateur : '?';
+  return 'RÉFÉRENTIEL RNCP (à recopier VERBATIM dans meta) :\n'
+    + '  titre_rncp : ' + rTitre + '\n'
+    + '  code_rncp  : ' + rCode + '\n'
+    + '  niveau     : ' + rNiveau + '\n'
+    + '  organisme  : ' + rOrg + '\n\n'
+    + 'BLOC :\n' + JSON.stringify(b, null, 2)
     + '\n\nCONTEXTE LUMIO :\n' + (ctx || 'Univers Lumio Health — medtech parisienne wearables stress. Personnages : Sonia Ferracci (DirMkt), Théo Marczak (CEO), Camille Ott (B2B), Yassine Morel (Content), Jakob Rein (Northgate).')
-    + '\n\nGénère ce JSON :\n{"meta":{"titre_rncp":string,"bloc":string,"intitule_bloc":string,"epreuve":string,"duree_reelle_min":210,"note_reflexive":boolean},"moment_narratif":{"date_fictive":string,"titre_affaire":string,"situation":string,"enjeu_central":string},"commanditaire":{"nom":string,"role":string},"competences":[{"code":string,"label":string,"rncp":string,"placeholder":string,"min_mots":number,"mots_cles":[string],"conseil":string}],"livrable":{"format":string,"total_mots_min":520,"note_reflexive_min":100},"jury_criteres_eliminatoires":[string],"documents_fictifs":[{"id":string,"type":string,"expediteur":string,"objet":string,"role_narratif":string,"acte":number}],"easter_egg":{"type":"whatsapp","personnages":[string,string],"tension_revelee":string}}'
-    + '\nRÈGLES : rncp=VERBATIM. jury_criteres_eliminatoires=5+ dont un sur rôles/responsabilités ET un sur indicateurs d\'impact. 6-8 documents fictifs sur 5 actes.';
+    + '\n\nGénère ce JSON :\n{"meta":{"titre_rncp":string,"code_rncp":string,"bloc":string,"intitule_bloc":string,"epreuve":string,"duree_reelle_min":210,"note_reflexive":boolean},"moment_narratif":{"date_fictive":string,"titre_affaire":string,"situation":string,"enjeu_central":string},"commanditaire":{"nom":string,"role":string},"competences":[{"code":string,"label":string,"rncp":string,"placeholder":string,"min_mots":number,"mots_cles":[string],"conseil":string}],"livrable":{"format":string,"total_mots_min":520,"note_reflexive_min":100},"jury_criteres_eliminatoires":[string],"documents_fictifs":[{"id":string,"type":string,"expediteur":string,"objet":string,"role_narratif":string,"acte":number}],"easter_egg":{"type":"whatsapp","personnages":[string,string],"tension_revelee":string}}'
+    + '\nRÈGLES :'
+    + '\n  - meta.titre_rncp = recopier EXACTEMENT le titre_rncp ci-dessus (ne pas paraphraser, ne pas inventer).'
+    + '\n  - meta.code_rncp  = recopier EXACTEMENT le code_rncp ci-dessus.'
+    + '\n  - competences[].rncp = VERBATIM depuis le bloc.'
+    + '\n  - jury_criteres_eliminatoires = 5+ dont un sur rôles/responsabilités ET un sur indicateurs d\'impact.'
+    + '\n  - documents_fictifs = 6-8 répartis sur 5 actes.';
 }
 
 document.getElementById('btn-generate').addEventListener('click', async function() {
@@ -615,7 +629,7 @@ document.getElementById('btn-generate').addEventListener('click', async function
         model: PAC_MODELS.SPEC,
         max_tokens: 12000,
         system: SPEC_SYS,
-        messages: [{ role: 'user', content: specPrompt(S.bloc, ctx) }]
+        messages: [{ role: 'user', content: specPrompt(S.bloc, ctx, S.race) }]
       })
     });
 
@@ -901,6 +915,10 @@ function renderOutput() {
     + '<div class="output-bloc-title">' + esc(spec.meta.intitule_bloc) + '</div>'
     + '<div style="font-size:11px;color:var(--muted);margin-top:3px;">' + esc(spec.moment_narratif.titre_affaire) + ' · ' + esc(spec.moment_narratif.date_fictive) + '</div>';
 
+  // FIX : supprimer les anciens panneaux pour éviter empilement à chaque re-render
+  var oldEnrich = document.getElementById('enrich-panel'); if (oldEnrich) oldEnrich.remove();
+  var oldGate   = document.getElementById('gate-panel');   if (oldGate)   oldGate.remove();
+
   var fl = document.getElementById('output-file-list');
   fl.innerHTML = '';
   ['data.js','app-livrable.jsx','app-assistant.jsx'].forEach(function(nm) {
@@ -940,6 +958,7 @@ function renderOutput() {
   // ── GATE BLOQUANT : le ZIP ne s'active QUE si tout passe ──
   var V = validatePAC(S.files);
   var gatePanel = document.createElement('div');
+  gatePanel.id = 'gate-panel';
   gatePanel.style.cssText = 'margin:14px 0;padding:14px 16px;border-radius:10px;border:1px solid ' + (V.ok ? 'rgba(31,111,92,.3)' : 'var(--red)') + ';background:' + (V.ok ? 'var(--mint-soft)' : 'rgba(192,57,43,.06)') + ';';
   var rows = V.checks.map(function(c){
     return '<div style="display:flex;gap:8px;align-items:flex-start;font-size:11.5px;line-height:1.5;margin:3px 0;">'
@@ -1060,11 +1079,14 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
         m.titre_rncp, m.titre, m.formation, m.code_rncp,
         m.intitule_bloc, m.organisme_certificateur
       ].filter(Boolean).join(' ');
-      // Patterns ordonnés par spécificité : sigle internes d'abord, puis texte
+      // Patterns ordonnés par spécificité : codes RNCP officiels d'abord, puis sigles internes, puis texte
       var PATTERNS = [
-        // CDRH — Chargé(e) des Ressources Humaines, ou Responsable RH
+        // Codes RNCP officiels (sources de vérité quand présents)
+        { rx: /\b38438\b/,                                    host: 'cdrh-pac.vercel.app' },
+        { rx: /\b38504\b/,                                    host: 'msmc-pac.vercel.app' },
+        // CDRH — Chargé(e) des Ressources Humaines
         { rx: /\bCDRH\b/i,                                    host: 'cdrh-pac.vercel.app' },
-        { rx: /\bressources?\s+humaines?\b/i,                 host: 'cdrh-pac.vercel.app' },
+        { rx: /\bcharg[eé]\b.{0,30}\bressources?\s+humaines?\b/i, host: 'cdrh-pac.vercel.app' },
         // MMD — Master Marketing Digital
         { rx: /\bMMD\b/i,                                     host: 'mmd-pac.vercel.app'  },
         { rx: /\bmarketing\s+digital\b/i,                     host: 'mmd-pac.vercel.app'  },
@@ -1073,10 +1095,12 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
         { rx: /\bdirection\b.{0,20}\borganisation/i,          host: 'mdo-pac.vercel.app'  },
         // REDA — Bachelor REDA
         { rx: /\bREDA\b|\bBACH\s*REDA\b/i,                    host: 'reda-pac.vercel.app' },
-        // MSMC — Marketing Stratégique et Management Commercial (RNCP 38504)
-        { rx: /\bMSMC\b|\b38504\b/i,                          host: 'msmc-pac.vercel.app' },
+        // MSMC — Marketing Stratégique et Management Commercial
+        { rx: /\bMSMC\b/i,                                    host: 'msmc-pac.vercel.app' },
         { rx: /\bmarketing\s+strat[eé]gique\b/i,              host: 'msmc-pac.vercel.app' },
         { rx: /\bmanagement\s+commercial\b/i,                 host: 'msmc-pac.vercel.app' },
+        // Filet de sécurité texte large : "ressources humaines" sans préciser le niveau (peut tomber sur CDRH par défaut)
+        { rx: /\bressources?\s+humaines?\b/i,                 host: 'cdrh-pac.vercel.app' },
       ];
       for (var i = 0; i < PATTERNS.length; i++) {
         if (PATTERNS[i].rx.test(blob)) return PATTERNS[i].host;
