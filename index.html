@@ -718,6 +718,180 @@ function validatePAC(files) {
 }
 
 // ═══════════════════════════════════════════════════════════
+//  ÉTOFFEMENT NARRATIF VIA CLAUDE
+//  Transforme les role_narratif du RACE en contenu rédigé.
+//  Stocke dans spec._enriched (consommé par buildData).
+// ═══════════════════════════════════════════════════════════
+var LUMIO_UNIVERSE = [
+  'UNIVERS — LUMIO HEALTH',
+  'Lumio Health est une medtech parisienne fondée en 2018 par Théo Marczak.',
+  'Wearables de mesure du stress au travail. 180 clients B2B fidèles.',
+  'Pression du fonds Northgate Capital pour pivoter B2C.',
+  '',
+  'PERSONNAGES RÉCURRENTS (utilisés selon le bloc) :',
+  '- Théo Marczak : CEO fondateur, énergique, vision-driven, parfois impulsif.',
+  '- Sonia Ferracci : Directrice Marketing (arrivée jan. 2026), méthodique, posture pédagogique.',
+  '- Camille Ott : Responsable partenariats B2B, terrain, attentive aux équipes.',
+  '- Yassine Morel : Content Manager, perfectionniste, signes de surmenage. RQTH.',
+  '- Jakob Rein : Partner Northgate Capital, exigeant, focus ROI et croissance.',
+  '',
+  'TON & STYLE :',
+  '- Communication professionnelle française, claire, sans corporate creux.',
+  '- Du concret : chiffres, dates, noms, références précises.',
+  '- Le ton varie selon l\'auteur (Théo direct/impulsif, Sonia posée, Jakob pressant).',
+  '- Confidentialité parfois requise (notes internes, propositions commerciales).'
+].join('\n');
+
+function buildEnrichmentContext(spec) {
+  var mn = spec.moment_narratif || {};
+  var cmd = spec.commanditaire || {};
+  return [
+    LUMIO_UNIVERSE, '',
+    'CONTEXTE DU BLOC',
+    'Titre RNCP : ' + (spec.meta.titre_rncp || ''),
+    'Bloc : ' + (spec.meta.intitule_bloc || ''),
+    'Affaire : ' + (mn.titre_affaire || ''),
+    'Date fictive : ' + (mn.date_fictive || ''),
+    'Situation : ' + (mn.situation || ''),
+    'Enjeu central : ' + (mn.enjeu_central || ''),
+    'Commanditaire : ' + (cmd.nom || '') + ' — ' + (cmd.role || ''), '',
+    'COMPÉTENCES VISÉES (le contenu doit permettre de les activer) :',
+    (spec.competences || []).map(function(c){ return '- ' + c.code + ' : ' + c.label; }).join('\n')
+  ].join('\n');
+}
+
+function parseClaudeJSON(text) {
+  if (!text) throw new Error('Réponse vide');
+  var clean = text.trim().replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+  var idx = clean.search(/[\{\[]/);
+  if (idx > 0) clean = clean.slice(idx);
+  var lastBrace = Math.max(clean.lastIndexOf('}'), clean.lastIndexOf(']'));
+  if (lastBrace > 0 && lastBrace < clean.length - 1) clean = clean.slice(0, lastBrace + 1);
+  return JSON.parse(clean);
+}
+
+async function callClaude(prompt, apiKey, maxTokens) {
+  var resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: maxTokens || 1800,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+  if (!resp.ok) {
+    var errText = await resp.text().catch(function(){ return resp.statusText; });
+    throw new Error('Claude API ' + resp.status + ' : ' + errText.slice(0, 200));
+  }
+  var data = await resp.json();
+  if (!data.content || !data.content[0]) throw new Error('Réponse Claude sans content');
+  return data.content[0].text;
+}
+
+// Mini-classifier (même logique que routeDocument côté buildData)
+function classifyDocumentType(doc) {
+  var t = String(doc.type || '').toLowerCase();
+  if (/email|courriel|message[s]?\b/.test(t))                    return 'mailbox';
+  if (/note[s]?|m[eé]mo|verbatim|alerte/.test(t))                return 'notes';
+  if (/deck|pr[eé]sentation|board|proposition|pitch|slide/.test(t)) return 'deck';
+  return 'rich';
+}
+
+async function enrichDocument(doc, ctx, apiKey) {
+  var kind = classifyDocumentType(doc);
+  var schema, instruction;
+  if (kind === 'mailbox') {
+    schema = '{"subject": "<sujet>", "body": "<corps 6-12 lignes, signature incluse>", "preview": "<1 phrase, 100 car max>"}';
+    instruction = 'Rédige un email professionnel français complet, signé par ' + (doc.expediteur || '?') + '. Garde le ton du personnage. Si le rôle narratif suggère une tension ou une omission, fais-la transparaître implicitement.';
+  } else if (kind === 'notes') {
+    schema = '{"title": "<titre court>", "kicker": "<étiquette MAJUSCULES>", "body": "<corps 4-8 lignes>", "preview": "<1 phrase 100 car max>"}';
+    instruction = 'Rédige une note interne courte et factuelle. Pas de signature.';
+  } else if (kind === 'deck') {
+    schema = '{"title": "<titre>", "subtitle": "<sous-titre>", "slides": [{"titre": "<titre slide>", "contenu": "<contenu 4-8 lignes>"}, {"titre": "<...>", "contenu": "<...>"}, {"titre": "<...>", "contenu": "<...>", "callout": "<point attention si pertinent, sinon omettre>"}]}';
+    instruction = 'Rédige un deck en 3-4 slides. Chiffres concrets quand pertinent.';
+  } else {
+    schema = '{"title": "<titre>", "pages": [{"kicker": "<étiquette MAJ>", "title": "<titre principal>", "byline": "<auteur · date>", "blocks": [{"type": "p", "text": "<paragraphe>"}, {"type": "h2", "text": "<sous-titre>"}, {"type": "p", "text": "<paragraphe>"}, {"type": "callout", "text": "<point clé>"}]}]}';
+    instruction = 'Rédige un document structuré (rapport, compte-rendu, dossier). 1 page suffit. 4-8 blocs mix de "p"/"h2"/"callout".';
+  }
+  var prompt = ctx + '\n\n═══ DOCUMENT À RÉDIGER ═══\n'
+    + 'Type : ' + (doc.type || '') + '\n'
+    + 'Expéditeur/Auteur : ' + (doc.expediteur || '') + '\n'
+    + 'Objet : ' + (doc.objet || '') + '\n'
+    + 'Acte narratif : ' + (doc.acte || '?') + ' (1=ancrage, 2=affaire, 3=diagnostic, 4=production, 5=réflexion)\n'
+    + 'Rôle narratif : ' + (doc.role_narratif || '') + '\n\n'
+    + instruction + '\n\n'
+    + 'RÉPONDS UNIQUEMENT EN JSON VALIDE, sans ```json wrappers, ce schéma exact :\n' + schema;
+  var text = await callClaude(prompt, apiKey, 1800);
+  return parseClaudeJSON(text);
+}
+
+async function enrichPress(ctx, apiKey) {
+  var prompt = ctx + '\n\n'
+    + 'Rédige UN article de presse fictif crédible (type Les Échos, L\'Usine Digitale) qui traite indirectement de l\'enjeu central. '
+    + 'L\'article ne doit PAS révéler la solution — il alimente le contexte étudiant.\n\n'
+    + 'JSON STRICT, sans backticks :\n'
+    + '{"source": "<média>", "host": "<domaine sans https>", "url": "<host>/<slug>", "author": "<journaliste>", "date": "<date>", "headline": "<titre>", "lede": "<chapeau 1-2 phrases>", "body": "<8-15 lignes, paragraphes séparés par \\n\\n>"}';
+  var text = await callClaude(prompt, apiKey, 1500);
+  return parseClaudeJSON(text);
+}
+
+async function enrichFausseUne(ctx, apiKey) {
+  var prompt = ctx + '\n\n'
+    + 'Rédige une "Une" de presse fictive (type Le Monde, Les Échos) qui crée une PRESSION supplémentaire sur le commanditaire ou Lumio Health. '
+    + 'En lien avec l\'enjeu central, sans révéler la solution.\n\n'
+    + 'JSON STRICT, sans backticks :\n'
+    + '{"source": "<quotidien>", "host": "<domaine>", "rubrique": "<ex: Économie & Entreprises>", "kicker": "<étiquette courte>", "date": "<date>", "headline": "<titre choc>", "chapeau": "<2-3 phrases>", "body": "<6-10 lignes>"}';
+  var text = await callClaude(prompt, apiKey, 1500);
+  return parseClaudeJSON(text);
+}
+
+async function enrichSlackSeed(spec, apiKey) {
+  var ctx = buildEnrichmentContext(spec);
+  var cmd = spec.commanditaire || {};
+  var prompt = ctx + '\n\n'
+    + 'Rédige 2-3 messages Slack initiaux envoyés par ' + (cmd.nom || 'le commanditaire') + ' à {{PRENOM}} en début de mission. '
+    + 'Ton conversationnel mais professionnel, ponctuation Slack (pas de point final, parfois lowercase). '
+    + 'Messages courts (1-3 phrases). Le dernier doit poser une attente claire.\n\n'
+    + 'JSON STRICT, sans backticks :\n'
+    + '{"messages": [{"time": "<HH:MM>", "text": "<message 1>"}, {"time": "<HH:MM>", "text": "<message 2>"}]}';
+  var text = await callClaude(prompt, apiKey, 1000);
+  return parseClaudeJSON(text);
+}
+
+async function enrichSpec(spec, onProgress) {
+  var apiKey = localStorage.getItem('pac_anthropic_key') || '';
+  if (!apiKey) throw new Error('Clé API Anthropic absente — saisis-la à l\'étape 1.');
+  var ctx = buildEnrichmentContext(spec);
+  var docs = spec.documents_fictifs || [];
+  var totalSteps = docs.length + 3;
+  var step = 0;
+  spec._enriched = spec._enriched || {};
+  for (var i = 0; i < docs.length; i++) {
+    step++;
+    onProgress(step, totalSteps, 'Document ' + (i + 1) + '/' + docs.length + ' · ' + (docs[i].type || ''));
+    try { docs[i].generated = await enrichDocument(docs[i], ctx, apiKey); }
+    catch (e) { console.warn('enrichDocument failed for doc ' + i + ':', e.message); docs[i]._enrichError = e.message; }
+  }
+  step++; onProgress(step, totalSteps, 'Article de presse');
+  try { spec._enriched.pressArticle = await enrichPress(ctx, apiKey); }
+  catch (e) { console.warn('enrichPress failed:', e.message); spec._enriched._pressError = e.message; }
+  step++; onProgress(step, totalSteps, 'Fausse Une');
+  try { spec._enriched.fausseUne = await enrichFausseUne(ctx, apiKey); }
+  catch (e) { console.warn('enrichFausseUne failed:', e.message); spec._enriched._uneError = e.message; }
+  step++; onProgress(step, totalSteps, 'Messages Slack initiaux');
+  try { spec._enriched.slackSeed = await enrichSlackSeed(spec, apiKey); }
+  catch (e) { console.warn('enrichSlackSeed failed:', e.message); spec._enriched._slackError = e.message; }
+  spec._enriched.completedAt = new Date().toISOString();
+  return spec;
+}
+
+// ═══════════════════════════════════════════════════════════
 //  RENDU OUTPUT
 // ═══════════════════════════════════════════════════════════
 function renderOutput() {
@@ -735,6 +909,34 @@ function renderOutput() {
       + '<button type="button" class="output-file-btn" onclick="cpFile(\'' + nm + '\')">Copier</button>';
     fl.appendChild(it);
   });
+
+  // ── PANNEAU ÉTOFFEMENT NARRATIF ──
+  var enrichPanel = document.createElement('div');
+  enrichPanel.id = 'enrich-panel';
+  var nbDocs = (spec.documents_fictifs || []).length;
+  var alreadyEnriched = spec._enriched && spec._enriched.completedAt;
+  enrichPanel.style.cssText = 'margin:14px 0;padding:14px 16px;border-radius:10px;border:1px solid ' + (alreadyEnriched ? 'rgba(31,111,92,.3)' : 'rgba(13,59,54,.15)') + ';background:' + (alreadyEnriched ? 'var(--mint-soft)' : 'var(--paper)') + ';';
+  if (alreadyEnriched) {
+    var enrichedDocs = (spec.documents_fictifs || []).filter(function(d){ return d.generated; }).length;
+    var extras = ['pressArticle', 'fausseUne', 'slackSeed'].filter(function(k){ return spec._enriched[k]; }).length;
+    enrichPanel.innerHTML = '<div style="font-family:\'Manrope\';font-weight:700;font-size:12px;margin-bottom:6px;">✨ Étoffement narratif terminé</div>'
+      + '<div style="font-size:11.5px;color:var(--muted);line-height:1.5;">'
+      + enrichedDocs + '/' + nbDocs + ' documents enrichis · ' + extras + '/3 bonus (presse, Une, Slack)<br>'
+      + 'Les <code style="background:rgba(0,0,0,.05);padding:1px 4px;border-radius:3px;">[À COMPLÉTER]</code> sont remplacés par du contenu Claude.<br>'
+      + '<button type="button" class="btn-sm" onclick="reEnrichSpec()" style="margin-top:8px">↻ Régénérer l\'étoffement</button>'
+      + '</div>';
+  } else {
+    enrichPanel.innerHTML = '<div style="font-family:\'Manrope\';font-weight:700;font-size:12px;margin-bottom:6px;">✨ Étoffement narratif (optionnel)</div>'
+      + '<div style="font-size:11.5px;color:var(--muted);line-height:1.5;margin-bottom:10px;">'
+      + 'Le ZIP actuel contient des <code style="background:rgba(0,0,0,.05);padding:1px 4px;border-radius:3px;">[À COMPLÉTER]</code> partout (corps emails, slides, pages de rapport, presse, Une, Slack). '
+      + 'Cliquer ci-dessous pour que Claude rédige automatiquement le contenu narratif à partir des <i>role_narratif</i> du RACE.<br>'
+      + '<i>~' + (nbDocs + 3) + ' appels Claude · ~30-60s · coût ~€0.05.</i>'
+      + '</div>'
+      + '<button type="button" id="btn-enrich" class="primary" onclick="doEnrichSpec()">✨ Étoffer le contenu narratif</button>'
+      + '<div id="enrich-progress" style="margin-top:10px;display:none;font-size:11.5px;color:var(--muted);"></div>';
+  }
+  fl.parentNode.insertBefore(enrichPanel, fl.nextSibling);
+
   // ── GATE BLOQUANT : le ZIP ne s'active QUE si tout passe ──
   var V = validatePAC(S.files);
   var gatePanel = document.createElement('div');
@@ -747,7 +949,7 @@ function renderOutput() {
   gatePanel.innerHTML = '<div style="font-family:\'Manrope\';font-weight:700;font-size:12px;margin-bottom:8px;">'
     + (V.ok ? '✓ Validation passée — bloc déployable' : '✗ Validation échouée — ZIP bloqué')
     + '</div>' + rows;
-  fl.parentNode.insertBefore(gatePanel, fl.nextSibling);
+  fl.parentNode.insertBefore(gatePanel, enrichPanel.nextSibling);
 
   var zb = document.getElementById('btn-zip');
   zb.disabled = !V.ok;
@@ -794,6 +996,39 @@ window.cpFile = function(k) {
 // ═══════════════════════════════════════════════════════════
 //  ZIP
 // ═══════════════════════════════════════════════════════════
+// ── Handlers étoffement narratif ──
+window.doEnrichSpec = async function() {
+  var btn = document.getElementById('btn-enrich');
+  var prog = document.getElementById('enrich-progress');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Étoffement en cours…'; }
+  if (prog) prog.style.display = 'block';
+  try {
+    await enrichSpec(S.spec, function(step, total, label) {
+      var pct = Math.round((step / total) * 100);
+      if (prog) prog.innerHTML = 'Étape ' + step + '/' + total + ' · ' + esc(label) + ' · <b>' + pct + '%</b>';
+    });
+    // Persister + régénérer les fichiers consommateurs (data.js et app-assistant lisent l'enrichissement)
+    S.files['data.js']         = buildData(S.spec);
+    S.files['app-livrable.jsx'] = buildLivrable(S.spec);
+    S.files['app-assistant.jsx'] = buildAssistant(S.spec);
+    try { sessionStorage.setItem('pac_v2', JSON.stringify({race: S.race, spec: S.spec, files: S.files, bloc: S.bloc})); } catch(e){}
+    renderOutput(); // re-rendu : le panneau passe en mode "terminé"
+    ss(3, '✨ Étoffement terminé — data.js régénéré avec contenu rédigé', 'info');
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.innerHTML = '✨ Étoffer le contenu narratif'; }
+    if (prog) prog.innerHTML = '<span style="color:var(--red)">❌ ' + esc(e.message) + '</span>';
+  }
+};
+window.reEnrichSpec = function() {
+  // Reset des enrichissements et relance
+  if (S.spec) {
+    delete S.spec._enriched;
+    (S.spec.documents_fictifs || []).forEach(function(d) { delete d.generated; delete d._enrichError; });
+    renderOutput();
+    setTimeout(window.doEnrichSpec, 50);
+  }
+};
+
 document.getElementById('btn-zip').addEventListener('click', async function() {
   if (!S.spec) return;
   var btn = document.getElementById('btn-zip');
@@ -942,7 +1177,7 @@ function buildData(spec) {
 
     // ─ EMAIL ─
     if (/email|courriel|message[s]?\b/.test(t)) {
-      return { collection: 'mailbox', shape: {
+      var emailShape = {
         id: doc.id || ('mail_' + (idx + 1)),
         from: who, fromEmail: emailSlug(who) + '@' + DOMAIN,
         subject: doc.objet || '[À COMPLÉTER — sujet]',
@@ -952,11 +1187,17 @@ function buildData(spec) {
         avatar: initials(who), avatarColor: accent,
         unread: idx === 0, flagged: doc.acte <= 2,
         tags: doc.acte === 1 ? ['Mission'] : undefined
-      }};
+      };
+      if (doc.generated) {
+        if (doc.generated.subject) emailShape.subject = doc.generated.subject;
+        if (doc.generated.body)    emailShape.body    = doc.generated.body;
+        if (doc.generated.preview) emailShape.preview = doc.generated.preview;
+      }
+      return { collection: 'mailbox', shape: emailShape };
     }
     // ─ NOTE / MÉMO / VERBATIM ─ (formats courts, sans pagination)
     if (/note[s]?|m[eé]mo|verbatim|alerte/.test(t)) {
-      return { collection: 'notes', shape: {
+      var noteShape = {
         id: doc.id || ('note_' + (idx + 1)),
         title: doc.objet || '[À COMPLÉTER — titre note]',
         date: date,
@@ -965,11 +1206,18 @@ function buildData(spec) {
         render: 'plain',
         body: '[À COMPLÉTER — corps de la note]\n\n' + (doc.role_narratif ? '(Rôle narratif : ' + doc.role_narratif + ')' : ''),
         byline: who + ' · ' + date
-      }};
+      };
+      if (doc.generated) {
+        if (doc.generated.title)   noteShape.title   = doc.generated.title;
+        if (doc.generated.body)    noteShape.body    = doc.generated.body;
+        if (doc.generated.kicker)  noteShape.kicker  = doc.generated.kicker;
+        if (doc.generated.preview) noteShape.preview = doc.generated.preview;
+      }
+      return { collection: 'notes', shape: noteShape };
     }
     // ─ DECK / PRÉSENTATION / PROPOSITION COMMERCIALE ─
     if (/deck|pr[eé]sentation|board|proposition|pitch|slide/.test(t)) {
-      return { collection: 'dossiers', shape: {
+      var deckShape = {
         id: doc.id || ('deck_' + (idx + 1)),
         type: 'deck',
         tab: (doc.type || 'DECK').split(/\s+/)[0].toUpperCase().slice(0, 8),
@@ -983,10 +1231,18 @@ function buildData(spec) {
           { titre: 'Constats', contenu: '[À COMPLÉTER — slide 2, données et constats]' },
           { titre: 'Recommandations', contenu: '[À COMPLÉTER — slide 3, recommandations chiffrées]', callout: '[À COMPLÉTER — point d\'attention si pertinent]' }
         ]
-      }};
+      };
+      if (doc.generated) {
+        if (doc.generated.title)    deckShape.title    = doc.generated.title;
+        if (doc.generated.subtitle) deckShape.subtitle = doc.generated.subtitle;
+        if (Array.isArray(doc.generated.slides) && doc.generated.slides.length) {
+          deckShape.slides = doc.generated.slides;
+        }
+      }
+      return { collection: 'dossiers', shape: deckShape };
     }
     // ─ TOUT LE RESTE → dossier RICH (rapports, dossiers, bulletins, tableaux, comptes-rendus, etc.) ─
-    return { collection: 'dossiers', shape: {
+    var richShape = {
       id: doc.id || ('doc_' + (idx + 1)),
       type: 'rich',
       tab: (doc.type || 'DOC').split(/\s+/)[0].toUpperCase().slice(0, 8),
@@ -1004,7 +1260,14 @@ function buildData(spec) {
           doc.role_narratif ? { type: 'callout', text: 'Rôle narratif : ' + doc.role_narratif } : null
         ].filter(Boolean)
       }]
-    }};
+    };
+    if (doc.generated) {
+      if (doc.generated.title) richShape.title = doc.generated.title;
+      if (Array.isArray(doc.generated.pages) && doc.generated.pages.length) {
+        richShape.pages = doc.generated.pages;
+      }
+    }
+    return { collection: 'dossiers', shape: richShape };
   }
 
   // ── COLLECTIONS dérivées des documents_fictifs ─────────────
@@ -1122,6 +1385,14 @@ function buildData(spec) {
   };
 
   // ── SLACK : workspace + 1 channel + DM du commanditaire ──
+  var slackSeed = [
+    { from: cmd.nom, avatar: initials(cmd.nom), color: '#134547', time: '08:32', text: '{{PRENOM}} — Bienvenue. ' + (mn.enjeu_central || 'Tu as les documents, regarde et reviens vers moi.') }
+  ];
+  if (spec._enriched && spec._enriched.slackSeed && Array.isArray(spec._enriched.slackSeed.messages)) {
+    slackSeed = spec._enriched.slackSeed.messages.map(function(m) {
+      return { from: cmd.nom, avatar: initials(cmd.nom), color: '#134547', time: m.time || '08:32', text: m.text || '' };
+    });
+  }
   var slack = {
     workspace: inferWorkspaceName(),
     channels: [
@@ -1131,11 +1402,7 @@ function buildData(spec) {
     dms: [
       { id: 'commanditaire', name: cmd.nom, avatar: initials(cmd.nom), color: '#134547', status: 'online', isCommanditaire: true }
     ],
-    seed: {
-      'commanditaire': [
-        { from: cmd.nom, avatar: initials(cmd.nom), color: '#134547', time: '08:32', text: '{{PRENOM}} — Bienvenue. ' + (mn.enjeu_central || 'Tu as les documents, regarde et reviens vers moi.') }
-      ]
-    }
+    seed: { 'commanditaire': slackSeed }
   };
   var slackPrompts = {
     commanditaire: 'Tu es ' + cmd.nom + ', ' + (cmd.role || 'commanditaire') + ' chez ' + inferWorkspaceName() + '. '
@@ -1146,19 +1413,47 @@ function buildData(spec) {
       + 'Tu réagis en 2-3 messages courts séparés par ---SPLIT---. Tu pointes ce qui te paraît juste et ce qui te paraît faible, sans expliquer comment corriger.'
   };
 
-  // ── PRESS (déjà au bon schéma) ────────────────────────────
+  // ── PRESS (déjà au bon schéma) — surchargé par spec._enriched si disponible ──
   var pressArticles = [{
     id: 'a1', source: 'Presse pro', host: 'presse-pro.fr', url: 'presse-pro.fr/article',
     author: '[À COMPLÉTER — auteur]', date: mn.date_fictive || '',
     headline: '[À COMPLÉTER — titre article]', lede: '[À COMPLÉTER — chapeau]',
     illustration: 'PHOTO ILLUSTRATIVE', body: '[À COMPLÉTER — article complet]'
   }];
+  if (spec._enriched && spec._enriched.pressArticle) {
+    var ep = spec._enriched.pressArticle;
+    pressArticles = [{
+      id: 'a1',
+      source: ep.source || 'Presse pro',
+      host: ep.host || 'presse-pro.fr',
+      url: ep.url || ((ep.host || 'presse-pro.fr') + '/article'),
+      author: ep.author || '',
+      date: ep.date || mn.date_fictive || '',
+      headline: ep.headline || '',
+      lede: ep.lede || '',
+      illustration: 'PHOTO ILLUSTRATIVE',
+      body: ep.body || ''
+    }];
+  }
   var fausseUne = {
     source: 'Le Quotidien', host: 'lequotidien.fr', rubrique: 'Économie & Entreprises',
     kicker: '[À COMPLÉTER]', date: mn.date_fictive || '',
     headline: '[À COMPLÉTER — titre Une]', chapeau: '[À COMPLÉTER — chapeau de Une]',
     body: '[À COMPLÉTER — corps de Une]'
   };
+  if (spec._enriched && spec._enriched.fausseUne) {
+    var eu = spec._enriched.fausseUne;
+    fausseUne = {
+      source: eu.source || fausseUne.source,
+      host: eu.host || fausseUne.host,
+      rubrique: eu.rubrique || fausseUne.rubrique,
+      kicker: eu.kicker || '',
+      date: eu.date || mn.date_fictive || '',
+      headline: eu.headline || '',
+      chapeau: eu.chapeau || '',
+      body: eu.body || ''
+    };
+  }
 
   // ── PAC_CONFIG : actes + compétences + jury ───────────────
   var competences = (spec.competences || []).map(function(c) {
