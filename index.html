@@ -629,7 +629,7 @@ document.getElementById('btn-back').addEventListener('click', function() { goTo(
 //  GATE DE VALIDATION BLOQUANT — aucun ZIP cassé ne sort d'ici
 //  Renvoie { ok:bool, errors:[], checks:[{name, ok, detail}] }
 // ═══════════════════════════════════════════════════════════
-var PAC_CONFIG_REQUIRED = ['bloc','titre','epreuve','temps','competences','juryPrompt'];
+var PAC_CONFIG_REQUIRED = ['formation','code_rncp','accroche','role_etudiant','titre_affaire'];
 
 function validateJSX(filename, src) {
   try {
@@ -643,7 +643,6 @@ function validateJSX(filename, src) {
 function validateDataJs(src) {
   // Exécute data.js dans un scope isolé, capture window.LUMIO_DATA + window.PAC_CONFIG
   var out = { name: 'data.js · exécution + clés PAC_CONFIG', ok: false, detail: '' };
-  if (!src || typeof src !== 'string') { out.detail = 'data.js absent ou non généré'; return out; }
   try {
     var sandbox = { LUMIO_DATA: undefined, PAC_CONFIG: undefined, PASS_CONFIG: undefined, console: console };
     var fn = new Function('window', src + '\n;return { LUMIO_DATA: window.LUMIO_DATA, PAC_CONFIG: window.PAC_CONFIG, PASS_CONFIG: window.PASS_CONFIG };');
@@ -653,14 +652,9 @@ function validateDataJs(src) {
     }
     var cfg = res.PAC_CONFIG || res.PASS_CONFIG;
     if (!cfg) { out.detail = 'window.PAC_CONFIG (ni PASS_CONFIG) défini'; return out; }
-    var missing = PAC_CONFIG_REQUIRED.filter(function(k){
-      var v = cfg[k];
-      if (v == null || v === '') return true;
-      if (Array.isArray(v) && v.length === 0) return true;  // temps/competences vides = bloc non fonctionnel
-      return false;
-    });
+    var missing = PAC_CONFIG_REQUIRED.filter(function(k){ return cfg[k] == null || cfg[k] === ''; });
     if (missing.length) { out.detail = 'Clés PAC_CONFIG manquantes/vides : ' + missing.join(', '); return out; }
-    out.ok = true; out.detail = 'LUMIO_DATA + ' + cfg.competences.length + ' compétence(s), ' + cfg.temps.length + ' acte(s)';
+    out.ok = true; out.detail = 'LUMIO_DATA + ' + PAC_CONFIG_REQUIRED.length + ' clés PAC_CONFIG présentes';
     return out;
   } catch (e) {
     out.detail = 'Erreur exécution data.js : ' + String(e.message).split('\n')[0];
@@ -786,12 +780,24 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
       'app-notes.jsx', 'app-slack.jsx', 'app-extras.jsx', 'app-trash.jsx',
       'api/chat.js', 'api/session.js', 'api/send-portfolio.js', 'vercel.json', 'package.json'
     ];
+    // Calcul des paramètres injectés dans api/send-portfolio.js :
+    // BLOC_ID  = identifiant kebab-case du bloc (ex: 'bc1', 'cdrh-bc1')
+    // PORTAL_HOST = host du portail (ex: 'msmc-pac.vercel.app')
+    // Le générateur lit spec.meta.portal_host si présent, sinon retombe sur 'msmc-pac.vercel.app'.
+    var INJECT_BLOC_ID = bloc;
+    var INJECT_PORTAL_HOST = (spec.meta && spec.meta.portal_host) || 'msmc-pac.vercel.app';
     var missing = [];
     for (var i = 0; i < FIXED.length; i++) {
       try {
         var r = await fetch('template/' + FIXED[i]);
         if (!r.ok) { missing.push(FIXED[i]); continue; }
-        zip.file(FIXED[i], await r.text());
+        var content = await r.text();
+        if (FIXED[i] === 'api/send-portfolio.js') {
+          content = content
+            .replace(/__BLOC_ID__/g, INJECT_BLOC_ID)
+            .replace(/__PORTAL_HOST__/g, INJECT_PORTAL_HOST);
+        }
+        zip.file(FIXED[i], content);
       } catch (e) { missing.push(FIXED[i]); }
     }
 
@@ -905,8 +911,28 @@ function buildData(spec) {
     deckBoard: { title: 'Présentation', pages: [{ titre: '[À COMPLÉTER]', body: '[À COMPLÉTER — slides]' }] },
     yassineVeille: { title: 'Veille concurrentielle', date: mn.date_fictive || '', body: '[À COMPLÉTER — veille]' },
     camilleVerbatims: [{ id: 'v1', auteur: 'Terrain', duree: '0:45', transcript: '[À COMPLÉTER — verbatim terrain]' }],
-    pressArticles: [{ id: 'a1', media: 'Presse', titre: '[À COMPLÉTER]', date: mn.date_fictive || '', body: '[À COMPLÉTER — article]' }],
-    fausseUne: { media: 'Une fictive', titre: '[À COMPLÉTER]', date: mn.date_fictive || '', body: '[À COMPLÉTER]' },
+    pressArticles: [{
+      id: 'a1',
+      source: 'Presse pro',
+      host: 'presse-pro.fr',
+      url: 'presse-pro.fr/article',
+      author: '[À COMPLÉTER — auteur]',
+      date: mn.date_fictive || '',
+      headline: '[À COMPLÉTER — titre article]',
+      lede: '[À COMPLÉTER — chapeau]',
+      illustration: 'PHOTO ILLUSTRATIVE',
+      body: '[À COMPLÉTER — article complet]'
+    }],
+    fausseUne: {
+      source: 'Le Quotidien',
+      host: 'lequotidien.fr',
+      rubrique: 'Économie & Entreprises',
+      kicker: '[À COMPLÉTER]',
+      date: mn.date_fictive || '',
+      headline: '[À COMPLÉTER — titre Une]',
+      chapeau: '[À COMPLÉTER — chapeau de Une]',
+      body: '[À COMPLÉTER — corps de Une]'
+    },
     documents: documents,
     slackMessages: {
       initial: [
