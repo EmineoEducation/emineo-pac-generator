@@ -907,23 +907,242 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
 //  BUILDERS spec → code
 // ═══════════════════════════════════════════════════════════
 function buildData(spec) {
-  var bloc  = normalizeBlocId(spec.meta.bloc); // normalisé : "1" → "bc1"
+  var bloc  = normalizeBlocId(spec.meta.bloc);
   var cmd   = spec.commanditaire || { nom: 'Le commanditaire', role: 'Commanditaire' };
   var mn    = spec.moment_narratif || {};
-  var slug  = (cmd.nom || 'contact').toLowerCase().split(' ')[0].replace(/[^a-z0-9]/g, '');
+  var titreRncp = spec.meta.titre_rncp || '';
 
-  // ── Documents fictifs → objets structurés (contenu = placeholder explicite à compléter) ──
-  var documents = (spec.documents_fictifs || []).map(function(d) {
-    return {
-      id: d.id, acte: d.acte, type: d.type,
-      expediteur: d.expediteur || cmd.nom,
-      objet: d.objet || '',
-      role_narratif: d.role_narratif || '',
-      body: '[À COMPLÉTER — ' + (d.role_narratif || d.type) + ']'
-    };
+  // ── HELPERS ─────────────────────────────────────────────────
+  // Initiales : "Sonia Ferracci" → "SF" · "Théo Marczak" → "TM" · "Jakob" → "J"
+  function initials(name) {
+    return String(name || '?').trim().split(/\s+/).map(function(w){ return w.charAt(0); }).join('').toUpperCase().slice(0, 2) || '?';
+  }
+  // Slug email : "Sonia Ferracci" → "sonia.ferracci"
+  function emailSlug(name) {
+    return String(name || 'contact').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, '').trim().split(/\s+/).slice(0, 2).join('.');
+  }
+  // Inférence d'un domaine entreprise depuis le titre RNCP (Lumio par défaut pour MSMC/CDRH historique)
+  function inferCompanyDomain() {
+    return 'lumio-health.com';
+  }
+  function inferWorkspaceName() {
+    return 'Lumio Health';
+  }
+  var DOMAIN = inferCompanyDomain();
+
+  // Palette accents (déterministe, varie par acte pour visuel) — éminéo-cohérent
+  var ACCENTS = ['#134547', '#1b4f8a', '#1a6641', '#c4420f', '#5b3a8a', '#7a756c'];
+
+  // Routage type document → collection cible (mailbox / dossiers.deck / dossiers.rich / notes)
+  function routeDocument(doc, idx) {
+    var t = String(doc.type || '').toLowerCase();
+    var accent = ACCENTS[idx % ACCENTS.length];
+    var who = doc.expediteur || cmd.nom;
+    var date = mn.date_fictive || '';
+
+    // ─ EMAIL ─
+    if (/email|courriel|message[s]?\b/.test(t)) {
+      return { collection: 'mailbox', shape: {
+        id: doc.id || ('mail_' + (idx + 1)),
+        from: who, fromEmail: emailSlug(who) + '@' + DOMAIN,
+        subject: doc.objet || '[À COMPLÉTER — sujet]',
+        date: date,
+        preview: '[À COMPLÉTER — preview, 1 phrase] · ' + (doc.role_narratif || ''),
+        body: '[À COMPLÉTER — corps de l\'email]\n\n' + (doc.role_narratif ? '(Rôle narratif : ' + doc.role_narratif + ')\n\n' : '') + '— ' + who,
+        avatar: initials(who), avatarColor: accent,
+        unread: idx === 0, flagged: doc.acte <= 2,
+        tags: doc.acte === 1 ? ['Mission'] : undefined
+      }};
+    }
+    // ─ NOTE / MÉMO / VERBATIM ─ (formats courts, sans pagination)
+    if (/note[s]?|m[eé]mo|verbatim|alerte/.test(t)) {
+      return { collection: 'notes', shape: {
+        id: doc.id || ('note_' + (idx + 1)),
+        title: doc.objet || '[À COMPLÉTER — titre note]',
+        date: date,
+        preview: '[À COMPLÉTER — preview]',
+        kicker: (doc.type || 'NOTE').toUpperCase(),
+        render: 'plain',
+        body: '[À COMPLÉTER — corps de la note]\n\n' + (doc.role_narratif ? '(Rôle narratif : ' + doc.role_narratif + ')' : ''),
+        byline: who + ' · ' + date
+      }};
+    }
+    // ─ DECK / PRÉSENTATION / PROPOSITION COMMERCIALE ─
+    if (/deck|pr[eé]sentation|board|proposition|pitch|slide/.test(t)) {
+      return { collection: 'dossiers', shape: {
+        id: doc.id || ('deck_' + (idx + 1)),
+        type: 'deck',
+        tab: (doc.type || 'DECK').split(/\s+/)[0].toUpperCase().slice(0, 8),
+        title: doc.objet || '[À COMPLÉTER — titre deck]',
+        subtitle: doc.role_narratif || '',
+        date: date,
+        accent: accent,
+        confidential: doc.acte >= 3 ? 'CONFIDENTIEL' : '',
+        slides: [
+          { titre: 'Contexte', contenu: '[À COMPLÉTER — slide 1, contexte et enjeu]' },
+          { titre: 'Constats', contenu: '[À COMPLÉTER — slide 2, données et constats]' },
+          { titre: 'Recommandations', contenu: '[À COMPLÉTER — slide 3, recommandations chiffrées]', callout: '[À COMPLÉTER — point d\'attention si pertinent]' }
+        ]
+      }};
+    }
+    // ─ TOUT LE RESTE → dossier RICH (rapports, dossiers, bulletins, tableaux, comptes-rendus, etc.) ─
+    return { collection: 'dossiers', shape: {
+      id: doc.id || ('doc_' + (idx + 1)),
+      type: 'rich',
+      tab: (doc.type || 'DOC').split(/\s+/)[0].toUpperCase().slice(0, 8),
+      title: doc.objet || '[À COMPLÉTER — titre dossier]',
+      accent: accent,
+      runningHead: (doc.type || '').toUpperCase().slice(0, 24),
+      pages: [{
+        kicker: (doc.type || 'DOCUMENT').toUpperCase(),
+        title: doc.objet || '[À COMPLÉTER]',
+        byline: who + ' · ' + date,
+        blocks: [
+          { type: 'p', text: '[À COMPLÉTER — paragraphe d\'introduction]' },
+          { type: 'h2', text: 'Éléments clés' },
+          { type: 'p', text: '[À COMPLÉTER — corps du document]' },
+          doc.role_narratif ? { type: 'callout', text: 'Rôle narratif : ' + doc.role_narratif } : null
+        ].filter(Boolean)
+      }]
+    }};
+  }
+
+  // ── COLLECTIONS dérivées des documents_fictifs ─────────────
+  var collections = { mailbox: [], dossiers: [], notes: [] };
+  (spec.documents_fictifs || []).forEach(function(doc, i) {
+    var r = routeDocument(doc, i);
+    collections[r.collection].push(r.shape);
   });
 
-  // ── Compétences mappées au schéma lu par app-livrable ──
+  // Garde-fou : si une collection critique reste vide, injecter au moins 1 item placeholder
+  if (collections.mailbox.length === 0) {
+    collections.mailbox.push({
+      id: 'mail_brief', from: cmd.nom, fromEmail: emailSlug(cmd.nom) + '@' + DOMAIN,
+      subject: mn.titre_affaire || ('Mission ' + bloc.toUpperCase()),
+      date: mn.date_fictive || '', preview: mn.enjeu_central || '[À COMPLÉTER — preview]',
+      body: '{{PRENOM}},\n\n' + (mn.situation || '[À COMPLÉTER — situation]') + '\n\nEnjeu : ' + (mn.enjeu_central || '[À COMPLÉTER — enjeu]') + '\n\n— ' + cmd.nom + '\n' + (cmd.role || ''),
+      avatar: initials(cmd.nom), avatarColor: '#134547', unread: true, flagged: true, tags: ['Mission']
+    });
+  }
+  if (collections.notes.length === 0) {
+    collections.notes.push({
+      id: 'note_terrain', title: '[À COMPLÉTER — verbatim terrain]', date: mn.date_fictive || '',
+      preview: '[À COMPLÉTER]', kicker: 'TERRAIN', render: 'plain',
+      body: '[À COMPLÉTER — note de terrain]', byline: '[À COMPLÉTER — auteur] · ' + (mn.date_fictive || '')
+    });
+  }
+
+  // ── GUIDE : tips dérivés des compétences ─────────────────
+  var guide = {
+    title: 'Guide de mission · ' + (spec.meta.intitule_bloc || bloc.toUpperCase()),
+    intro: 'Ce guide est là si tu te sens bloqué. Il ne donne pas les réponses — il indique où chercher.',
+    tips: (spec.competences || []).slice(0, 6).map(function(c) {
+      return { titre: c.code + ' — ' + c.label, body: c.conseil || '[À COMPLÉTER — conseil]' };
+    }),
+    footer: 'Ce guide est disponible à tout moment via le bouton ? en bas à gauche du desktop.'
+  };
+
+  // ── FINDER : arborescence par acte ────────────────────────
+  function makeFinderItem(doc, route) {
+    var label = (doc.objet || doc.type || 'document').split(/\s+/).slice(0, 4).join(' ');
+    return {
+      kind: route.collection === 'mailbox' ? 'mail' : (route.shape.type === 'deck' ? 'deck' : (route.collection === 'notes' ? 'note' : 'pdf')),
+      name: label,
+      app: route.collection === 'mailbox' ? 'mail' : (route.collection === 'notes' ? 'notes' : 'pdf'),
+      props: { docId: route.shape.id }
+    };
+  }
+  var folders = {
+    guide: { title: 'Guide', sidebar: '⌘ Guide', icon: '📕', items: [{ kind: 'pdf', name: 'Guide de mission', app: 'pdf', props: {} }] }
+  };
+  var folderOrder = ['guide'];
+  [1, 2, 3, 4, 5].forEach(function(acte) {
+    var docsActe = (spec.documents_fictifs || []).filter(function(d){ return d.acte === acte; });
+    if (docsActe.length === 0) return;
+    var items = docsActe.map(function(d) {
+      var idx = (spec.documents_fictifs || []).indexOf(d);
+      return makeFinderItem(d, routeDocument(d, idx));
+    });
+    var fId = 'acte' + acte;
+    folders[fId] = { title: 'Acte ' + acte, sidebar: 'Acte ' + acte, icon: '📁', items: items };
+    folderOrder.push(fId);
+  });
+  var finder = { folders: folders, order: folderOrder };
+
+  // ── CALENDAR : généré depuis la date fictive (durée 18 j par convention PAC) ──
+  function inferMonthLabel(dateStr) {
+    var months = { 'jan': 'Janvier', 'fev': 'Février', 'fév': 'Février', 'mar': 'Mars', 'avr': 'Avril', 'mai': 'Mai', 'jui': 'Juin', 'jul': 'Juillet', 'aou': 'Août', 'aoû': 'Août', 'sep': 'Septembre', 'oct': 'Octobre', 'nov': 'Novembre', 'dec': 'Décembre', 'déc': 'Décembre' };
+    var s = String(dateStr || '').toLowerCase();
+    for (var k in months) { if (s.indexOf(k) === 0 || s.indexOf(' ' + k) >= 0) return months[k]; }
+    var m = s.match(/(\d{4})/); return 'Mois ' + (m ? m[1] : '');
+  }
+  function inferStartDay(dateStr) {
+    var m = String(dateStr || '').match(/^(\d{1,2})/); return m ? parseInt(m[1], 10) : 1;
+  }
+  var startDay = inferStartDay(mn.date_fictive);
+  var calendar = {
+    monthLabel: inferMonthLabel(mn.date_fictive),
+    todayLabel: 'Jour 1 / 18',
+    countdownLabel: 'AVANT ÉCHÉANCE',
+    startDay: startDay,
+    daysInMonth: 31,
+    startOffset: 0,
+    deadlineDay: Math.min(startDay + 17, 31),
+    boardDay: null,
+    legend: [
+      { label: 'Réunion', color: '#3a7bd5' },
+      { label: 'Production', color: '#c4420f' },
+      { label: 'Échéance', color: '#a83232' }
+    ],
+    events: (function() {
+      var e = {};
+      e[startDay] = [{ label: 'Kick-off · ' + (mn.titre_affaire || 'Mission'), bg: '#3a7bd5', color: '#fff', bold: true }];
+      e[Math.min(startDay + 17, 31)] = [{ label: 'Livrable final', bg: '#a83232', color: '#fff', bold: true }];
+      return e;
+    })(),
+    footer: '<em>1 jour fictif ≈ 11 minutes réelles · ratio ×74</em>'
+  };
+
+  // ── SLACK : workspace + 1 channel + DM du commanditaire ──
+  var slack = {
+    workspace: inferWorkspaceName(),
+    channels: [
+      { id: 'general', name: 'general' },
+      { id: 'projet-' + bloc, name: 'projet-' + bloc }
+    ],
+    dms: [
+      { id: 'commanditaire', name: cmd.nom, avatar: initials(cmd.nom), color: '#134547', status: 'online', isCommanditaire: true }
+    ],
+    seed: {
+      'commanditaire': [
+        { from: cmd.nom, avatar: initials(cmd.nom), color: '#134547', time: '08:32', text: '{{PRENOM}} — Bienvenue. ' + (mn.enjeu_central || 'Tu as les documents, regarde et reviens vers moi.') }
+      ]
+    }
+  };
+  var slackPrompts = {
+    commanditaire: 'Tu es ' + cmd.nom + ', ' + (cmd.role || 'commanditaire') + ' chez ' + inferWorkspaceName() + '. '
+      + 'Tu réponds à {{PRENOM}}, consultant·e externe sur la mission "' + (mn.titre_affaire || '') + '". '
+      + 'Tu évalues sans expliquer, tu relances sans donner la réponse, tu simules la pression hiérarchique. '
+      + 'Tu réponds en 2-3 messages courts séparés par ---SPLIT---. Pas de longs développements.',
+    commanditaireLivrable: 'Tu es ' + cmd.nom + '. Tu viens de recevoir le livrable de {{PRENOM}}. '
+      + 'Tu réagis en 2-3 messages courts séparés par ---SPLIT---. Tu pointes ce qui te paraît juste et ce qui te paraît faible, sans expliquer comment corriger.'
+  };
+
+  // ── PRESS (déjà au bon schéma) ────────────────────────────
+  var pressArticles = [{
+    id: 'a1', source: 'Presse pro', host: 'presse-pro.fr', url: 'presse-pro.fr/article',
+    author: '[À COMPLÉTER — auteur]', date: mn.date_fictive || '',
+    headline: '[À COMPLÉTER — titre article]', lede: '[À COMPLÉTER — chapeau]',
+    illustration: 'PHOTO ILLUSTRATIVE', body: '[À COMPLÉTER — article complet]'
+  }];
+  var fausseUne = {
+    source: 'Le Quotidien', host: 'lequotidien.fr', rubrique: 'Économie & Entreprises',
+    kicker: '[À COMPLÉTER]', date: mn.date_fictive || '',
+    headline: '[À COMPLÉTER — titre Une]', chapeau: '[À COMPLÉTER — chapeau de Une]',
+    body: '[À COMPLÉTER — corps de Une]'
+  };
+
+  // ── PAC_CONFIG : actes + compétences + jury ───────────────
   var competences = (spec.competences || []).map(function(c) {
     return {
       code: c.code, label: c.label,
@@ -932,20 +1151,16 @@ function buildData(spec) {
       min: c.min_mots || 80, motsCles: c.mots_cles || [], conseil: c.conseil || ''
     };
   });
-
-  // ── Actes : structure PAC standard (5 actes / 210 min) ──
   var temps = [
-    { n: 1, label: 'Ancrage terrain',        debut: 0,   fin: 20,  couleur: '#7a756c' },
-    { n: 2, label: "Entrée dans l'affaire",  debut: 20,  fin: 50,  couleur: '#1b4f8a' },
-    { n: 3, label: 'Diagnostic',             debut: 50,  fin: 95,  couleur: '#1a6641' },
-    { n: 4, label: 'Production',             debut: 95,  fin: 175, couleur: '#c4420f' },
-    { n: 5, label: 'Réflexion',              debut: 175, fin: 210, couleur: '#7a756c' }
+    { n: 1, label: 'Ancrage terrain',       debut: 0,   fin: 20,  couleur: '#7a756c' },
+    { n: 2, label: "Entrée dans l'affaire", debut: 20,  fin: 50,  couleur: '#1b4f8a' },
+    { n: 3, label: 'Diagnostic',            debut: 50,  fin: 95,  couleur: '#1a6641' },
+    { n: 4, label: 'Production',            debut: 95,  fin: 175, couleur: '#c4420f' },
+    { n: 5, label: 'Réflexion',             debut: 175, fin: 210, couleur: '#7a756c' }
   ];
-
-  // ── Prompt jury (utilisé par app-livrable générique) ──
   var crit = (spec.jury_criteres_eliminatoires || []).map(function(c) { return '- ' + c; }).join('\n');
   var efmt = (spec.competences || []).map(function(c) { return '### ' + c.code + ' — [Satisfaisant / Insuffisant / Absent]\nUne phrase de retour précise et exigeante.'; }).join('\n\n');
-  var juryPrompt = 'Tu es le jury certifiant du bloc ' + bloc + ' (' + (spec.meta.titre_rncp || '') + ').\n'
+  var juryPrompt = 'Tu es le jury certifiant du bloc ' + bloc + ' (' + titreRncp + ').\n'
     + 'Contexte : ' + (mn.titre_affaire || '') + ' · ' + (mn.date_fictive || '') + '.\n'
     + 'Tu évalues une production étudiante aux critères RNCP stricts. Sois exigeant mais juste.\n'
     + 'Critères éliminatoires :\n' + crit + '\n\n'
@@ -954,60 +1169,21 @@ function buildData(spec) {
     + '\n\n## Niveau global\n**[Non conforme / Partiellement conforme / Conforme / Conforme avec distinction]**\n\n'
     + '## Question de jury\nUne question dérangeante que tu poserais à l\'oral.';
 
-  // ── LUMIO_DATA : toutes les clés lues par le runtime (aucune absente → aucun crash) ──
+  // ── LUMIO_DATA : schéma canonique aligné sur les apps template/ ──
   var data = {
     student: { name: '{{PRENOM}} {{NOM}}', role: 'Consultant·e externe', email: '{{EMAIL_ETUDIANT}}', company: 'Indépendant·e', initial: '?' },
-    contexte: {
-      title: 'Fiche contexte — Lumio Health',
-      subtitle: 'À lire en premier si vous découvrez l\'univers',
-      body: mn.situation || '[À COMPLÉTER — contexte Lumio pour ce bloc]'
-    },
-    briefEmail: {
-      from: cmd.nom, fromEmail: slug + '@lumio-health.com',
-      subject: mn.titre_affaire || ('Mission — ' + bloc),
-      date: mn.date_fictive || '',
-      body: '{{PRENOM}},\n\n' + (mn.situation || '') + '\n\nEnjeu : ' + (mn.enjeu_central || '') + '\n\n— ' + cmd.nom + '\n' + (cmd.role || '')
-    },
-    jakobEmail: {
-      from: cmd.nom, to: '{{PRENOM}} {{NOM}}', subject: mn.titre_affaire || '', date: mn.date_fictive || '',
-      tag: 'CONFIDENTIEL',
-      body: '[À COMPLÉTER — email confidentiel : ' + (mn.enjeu_central || '') + ']'
-    },
-    theoNote: { title: 'Note interne', date: mn.date_fictive || '', body: '[À COMPLÉTER — note interne confidentielle]' },
-    deckBoard: { title: 'Présentation', pages: [{ titre: '[À COMPLÉTER]', body: '[À COMPLÉTER — slides]' }] },
-    yassineVeille: { title: 'Veille concurrentielle', date: mn.date_fictive || '', body: '[À COMPLÉTER — veille]' },
-    camilleVerbatims: [{ id: 'v1', auteur: 'Terrain', duree: '0:45', transcript: '[À COMPLÉTER — verbatim terrain]' }],
-    pressArticles: [{
-      id: 'a1',
-      source: 'Presse pro',
-      host: 'presse-pro.fr',
-      url: 'presse-pro.fr/article',
-      author: '[À COMPLÉTER — auteur]',
-      date: mn.date_fictive || '',
-      headline: '[À COMPLÉTER — titre article]',
-      lede: '[À COMPLÉTER — chapeau]',
-      illustration: 'PHOTO ILLUSTRATIVE',
-      body: '[À COMPLÉTER — article complet]'
-    }],
-    fausseUne: {
-      source: 'Le Quotidien',
-      host: 'lequotidien.fr',
-      rubrique: 'Économie & Entreprises',
-      kicker: '[À COMPLÉTER]',
-      date: mn.date_fictive || '',
-      headline: '[À COMPLÉTER — titre Une]',
-      chapeau: '[À COMPLÉTER — chapeau de Une]',
-      body: '[À COMPLÉTER — corps de Une]'
-    },
-    documents: documents,
-    slackMessages: {
-      initial: [
-        { from: cmd.nom, time: '08:32', text: '{{PRENOM}} — ' + (mn.enjeu_central || 'on en parle ?'), read: true }
-      ],
-      delayed: [
-        { from: cmd.nom, time: '+15min', text: '{{PRENOM}}, dès que tu as une hypothèse solide, envoie-la moi ici.', channel: 'DM' }
-      ]
-    }
+    mailbox: collections.mailbox,
+    dossiers: collections.dossiers,
+    notes: collections.notes,
+    guide: guide,
+    notepad: { title: 'Mes notes — mission', placeholder: 'Tes pensées au fil de l\'eau pendant que tu lis le dossier.' },
+    finder: finder,
+    calendar: calendar,
+    trash: { title: 'La corbeille est vide.', body: "Mais l'idée est bonne. La plupart des consultants commencent par jeter quelque chose." },
+    slack: slack,
+    slackPrompts: slackPrompts,
+    pressArticles: pressArticles,
+    fausseUne: fausseUne
   };
 
   var cfg = {
@@ -1016,6 +1192,7 @@ function buildData(spec) {
     epreuve: spec.meta.epreuve,
     deadline: (mn.date_fictive || '') + ' · 18h00',
     commanditaire: cmd.nom,
+    entreprise: inferWorkspaceName(),
     dispositif: 'PAC',
     note_reflexive: !!spec.meta.note_reflexive,
     temps: temps,
@@ -1028,16 +1205,18 @@ function buildData(spec) {
   };
 
   return '// ══════════════════════════════════════════════════════════════\n'
-    + '//  DATA · PAC ' + bloc + ' · ' + spec.meta.titre_rncp + '\n'
+    + '//  DATA · PAC ' + bloc.toUpperCase() + ' · ' + titreRncp + '\n'
     + '//  ' + (mn.titre_affaire || '') + ' · ' + (mn.date_fictive || '') + '\n'
+    + '//  Schéma : mailbox[] · dossiers[] · notes[] · guide · finder · calendar · slack\n'
     + '//  ⚠️  Remplacer les [À COMPLÉTER] par le contenu narratif réel du bloc.\n'
     + '//  ⚠️  Les placeholders {{PRENOM}} {{NOM}} {{EMAIL_ETUDIANT}} sont substitués à la connexion.\n'
     + '// ══════════════════════════════════════════════════════════════\n\n'
     + 'window.LUMIO_DATA = ' + JSON.stringify(data, null, 2) + ';\n\n'
     + 'window.PAC_CONFIG = ' + JSON.stringify(cfg, null, 2) + ';\n'
-    + '// Alias de compatibilité (les apps existantes lisent encore PASS_CONFIG)\n'
+    + '// Alias de compatibilité\n'
     + 'window.PASS_CONFIG = window.PAC_CONFIG;\n';
 }
+
 
 function buildLivrable(spec) {
   var bloc = normalizeBlocId(spec.meta.bloc); // normalisé : "1" → "bc1"
