@@ -1071,13 +1071,31 @@ function buildData(spec) {
 
   // ── CALENDAR : généré depuis la date fictive (durée 18 j par convention PAC) ──
   function inferMonthLabel(dateStr) {
-    var months = { 'jan': 'Janvier', 'fev': 'Février', 'fév': 'Février', 'mar': 'Mars', 'avr': 'Avril', 'mai': 'Mai', 'jui': 'Juin', 'jul': 'Juillet', 'aou': 'Août', 'aoû': 'Août', 'sep': 'Septembre', 'oct': 'Octobre', 'nov': 'Novembre', 'dec': 'Décembre', 'déc': 'Décembre' };
+    var months = { janvier: 'Janvier', fevrier: 'Février', 'février': 'Février', mars: 'Mars', avril: 'Avril', mai: 'Mai', juin: 'Juin', juillet: 'Juillet', aout: 'Août', 'août': 'Août', septembre: 'Septembre', octobre: 'Octobre', novembre: 'Novembre', decembre: 'Décembre', 'décembre': 'Décembre' };
     var s = String(dateStr || '').toLowerCase();
-    for (var k in months) { if (s.indexOf(k) === 0 || s.indexOf(' ' + k) >= 0) return months[k]; }
-    var m = s.match(/(\d{4})/); return 'Mois ' + (m ? m[1] : '');
+    // Mot-clé mois avec \b (évite "mardi" → "mars")
+    for (var k in months) {
+      var rx = new RegExp('\\b' + k + '\\b', 'i');
+      if (rx.test(s)) return months[k];
+    }
+    // Format ISO YYYY-MM-DD → numéro de mois
+    var iso = s.match(/(\d{4})-(\d{2})-\d{2}/);
+    if (iso) {
+      var names = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+      var idx = parseInt(iso[2], 10) - 1;
+      if (idx >= 0 && idx < 12) return names[idx];
+    }
+    return '';
   }
   function inferStartDay(dateStr) {
-    var m = String(dateStr || '').match(/^(\d{1,2})/); return m ? parseInt(m[1], 10) : 1;
+    var s = String(dateStr || '');
+    // Format ISO YYYY-MM-DD → prendre le DD
+    var iso = s.match(/^\d{4}-\d{2}-(\d{1,2})/);
+    if (iso) return parseInt(iso[1], 10);
+    // Format français : premier nombre 1-2 chiffres NON suivi d'un autre chiffre
+    // (évite que "2025" soit lu comme "20" sur "12 mai 2025" — pas un risque ici car "12" matche en premier, mais sécurité)
+    var m = s.match(/\b(\d{1,2})\b(?!\d)/);
+    return m ? parseInt(m[1], 10) : 1;
   }
   var startDay = inferStartDay(mn.date_fictive);
   var calendar = {
