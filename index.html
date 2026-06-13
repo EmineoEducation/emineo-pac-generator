@@ -629,7 +629,11 @@ document.getElementById('btn-back').addEventListener('click', function() { goTo(
 //  GATE DE VALIDATION BLOQUANT — aucun ZIP cassé ne sort d'ici
 //  Renvoie { ok:bool, errors:[], checks:[{name, ok, detail}] }
 // ═══════════════════════════════════════════════════════════
-var PAC_CONFIG_REQUIRED = ['formation','code_rncp','accroche','role_etudiant','titre_affaire'];
+// Schéma RÉEL produit par buildData() — pas les clés du RACE ingéré.
+// Clés requises non-vides : strings simples (bloc, titre, epreuve, commanditaire, juryPrompt)
+// Tableaux requis non-vides : temps[], competences[]
+var PAC_CONFIG_REQUIRED_STRINGS = ['bloc','titre','epreuve','commanditaire','juryPrompt'];
+var PAC_CONFIG_REQUIRED_ARRAYS  = ['temps','competences'];
 
 function validateJSX(filename, src) {
   try {
@@ -652,9 +656,18 @@ function validateDataJs(src) {
     }
     var cfg = res.PAC_CONFIG || res.PASS_CONFIG;
     if (!cfg) { out.detail = 'window.PAC_CONFIG (ni PASS_CONFIG) défini'; return out; }
-    var missing = PAC_CONFIG_REQUIRED.filter(function(k){ return cfg[k] == null || cfg[k] === ''; });
-    if (missing.length) { out.detail = 'Clés PAC_CONFIG manquantes/vides : ' + missing.join(', '); return out; }
-    out.ok = true; out.detail = 'LUMIO_DATA + ' + PAC_CONFIG_REQUIRED.length + ' clés PAC_CONFIG présentes';
+    var missingStr = PAC_CONFIG_REQUIRED_STRINGS.filter(function(k){ return cfg[k] == null || cfg[k] === ''; });
+    var missingArr = PAC_CONFIG_REQUIRED_ARRAYS.filter(function(k){ return !Array.isArray(cfg[k]) || cfg[k].length === 0; });
+    if (missingStr.length || missingArr.length) {
+      var parts = [];
+      if (missingStr.length) parts.push('strings vides : ' + missingStr.join(', '));
+      if (missingArr.length) parts.push('tableaux vides : ' + missingArr.join(', '));
+      out.detail = 'Clés PAC_CONFIG ' + parts.join(' · ');
+      return out;
+    }
+    var total = PAC_CONFIG_REQUIRED_STRINGS.length + PAC_CONFIG_REQUIRED_ARRAYS.length;
+    out.ok = true;
+    out.detail = 'LUMIO_DATA + ' + total + ' clés PAC_CONFIG OK (competences: ' + cfg.competences.length + ', temps: ' + cfg.temps.length + ')';
     return out;
   } catch (e) {
     out.detail = 'Erreur exécution data.js : ' + String(e.message).split('\n')[0];
