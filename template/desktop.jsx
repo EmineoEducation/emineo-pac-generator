@@ -143,7 +143,7 @@ function Dock({ openApp, openWindows, livrableUnlocked }) {
     { id: 'finder', label: 'Finder' }, { id: 'mail', label: 'Mail' }, { id: 'browser', label: 'Safari' },
     { id: 'pdf', label: 'Aperçu' }, { id: 'voice', label: 'Mémos vocaux' }, { id: 'notes', label: 'Notes' },
     { id: 'notepad', label: 'Bloc-notes' }, { id: 'slack', label: 'Slack' }, { id: 'calendar', label: 'Calendrier' },
-    { id: 'jefferson', label: 'Jefferson' }, { id: 'trash', label: 'Corbeille' }
+    { id: 'trash', label: 'Corbeille' }
   ];
   const items = livrableUnlocked
     ? [...baseItems.slice(0, -1), { id: 'livrable', label: 'Livrable', bounce: true }, baseItems[baseItems.length - 1]]
@@ -391,12 +391,51 @@ function Desktop({ onLogout }) {
         <Dock openApp={openApp} openWindows={windows} livrableUnlocked={livrableUnlocked} />
         <PacTimeline />
         <NotificationStack notifications={notifications} onDismiss={dismissNotif} onClick={clickNotif} />
+        <JeffersonFab openApp={openApp} isOpen={windows.some(w => w.app === 'jefferson')} />
         <button onClick={() => openApp('finder', { openFolder: 'guide' })} title="Guide de mission"
           style={{ position: 'fixed', bottom: 90, left: 16, zIndex: 9998, width: 32, height: 32, borderRadius: '50%', background: 'rgba(245,243,239,0.55)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.4)', boxShadow: '0 4px 12px rgba(20,24,36,0.18)', color: 'var(--ink-soft)', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .2s' }}
           onMouseEnter={e => { e.currentTarget.style.background = 'rgba(26,102,65,0.85)'; e.currentTarget.style.color = 'white'; }}
           onMouseLeave={e => { e.currentTarget.style.background = 'rgba(245,243,239,0.55)'; e.currentTarget.style.color = 'var(--ink-soft)'; }}>?</button>
       </div>
     </WindowsCtx.Provider>
+  );
+}
+
+// ═════ Jefferson FAB ═══════════════════════════════════════
+// Bouton flottant en bas à droite (hors dock). 3 états visuels :
+// idle (gris), talking (animé quand fenêtre ouverte), alert (badge rouge).
+function JeffersonFab({ openApp, isOpen }) {
+  const Icon = window.JeffersonIcon;
+  const [hover, setHover] = useWmState(false);
+  useWmEffect(() => {
+    if (!document.getElementById('jefferson-fab-style')) {
+      const s = document.createElement('style'); s.id = 'jefferson-fab-style';
+      s.textContent = '@keyframes jefferson-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}.jefferson-talking{animation:jefferson-pulse 1.4s ease-in-out infinite}';
+      document.head.appendChild(s);
+    }
+  }, []);
+  return (
+    <button
+      onClick={() => openApp('jefferson')}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      title="Jefferson · Guide PAC"
+      className={isOpen ? 'jefferson-talking' : ''}
+      style={{
+        position: 'fixed', bottom: 22, right: 22, zIndex: 9998,
+        width: 60, height: 60, borderRadius: '50%',
+        background: 'rgba(245,243,239,0.78)',
+        backdropFilter: 'blur(20px) saturate(1.4)',
+        WebkitBackdropFilter: 'blur(20px) saturate(1.4)',
+        border: '1px solid rgba(255,255,255,0.5)',
+        boxShadow: hover ? '0 14px 36px rgba(20,24,36,0.28)' : '0 8px 22px rgba(20,24,36,0.18)',
+        cursor: 'pointer', padding: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'transform 220ms cubic-bezier(.34,1.56,.64,1), box-shadow 220ms ease',
+        transform: hover ? 'translateY(-3px) scale(1.04)' : 'none'
+      }}>
+      {Icon ? <Icon size={42} /> : <span style={{ fontSize: 24 }}>🐰</span>}
+    </button>
   );
 }
 
