@@ -814,8 +814,9 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
     // BLOC_ID     = identifiant kebab-case du bloc (ex: 'bc1', 'cdrh-bc1')
     // PORTAL_HOST = host du portail, inféré selon ce protocole d'ordre fixe :
     //   1. override explicite           → spec.meta.portal_host
-    //   2. inférence par mot-clé dans   → spec.meta.titre_rncp / titre / code_rncp / formation
-    //      (CDRH → cdrh-pac · MMD → mmd-pac · MDO → mdo-pac · REDA → reda-pac)
+    //   2. table de patterns (premier match gagne)
+    //      → sigles internes (CDRH, MSMC, MMD, MDO, REDA) + 38504
+    //      → titres RNCP textuels (ressources humaines, marketing stratégique, etc.)
     //   3. défaut                       → msmc-pac.vercel.app (titre historique)
     function inferPortalHost(spec) {
       var m = spec.meta || {};
@@ -823,12 +824,28 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
       var blob = [
         m.titre_rncp, m.titre, m.formation, m.code_rncp,
         m.intitule_bloc, m.organisme_certificateur
-      ].filter(Boolean).join(' ').toUpperCase();
-      if (/\bCDRH\b/.test(blob)) return 'cdrh-pac.vercel.app';
-      if (/\bMMD\b/.test(blob))  return 'mmd-pac.vercel.app';
-      if (/\bMDO\b/.test(blob))  return 'mdo-pac.vercel.app';
-      if (/\bREDA\b/.test(blob) || /\bBACH\s*REDA\b/.test(blob)) return 'reda-pac.vercel.app';
-      if (/\bMSMC\b/.test(blob) || /\b38504\b/.test(blob))       return 'msmc-pac.vercel.app';
+      ].filter(Boolean).join(' ');
+      // Patterns ordonnés par spécificité : sigle internes d'abord, puis texte
+      var PATTERNS = [
+        // CDRH — Chargé(e) des Ressources Humaines, ou Responsable RH
+        { rx: /\bCDRH\b/i,                                    host: 'cdrh-pac.vercel.app' },
+        { rx: /\bressources?\s+humaines?\b/i,                 host: 'cdrh-pac.vercel.app' },
+        // MMD — Master Marketing Digital
+        { rx: /\bMMD\b/i,                                     host: 'mmd-pac.vercel.app'  },
+        { rx: /\bmarketing\s+digital\b/i,                     host: 'mmd-pac.vercel.app'  },
+        // MDO — Master Direction des Organisations
+        { rx: /\bMDO\b/i,                                     host: 'mdo-pac.vercel.app'  },
+        { rx: /\bdirection\b.{0,20}\borganisation/i,          host: 'mdo-pac.vercel.app'  },
+        // REDA — Bachelor REDA
+        { rx: /\bREDA\b|\bBACH\s*REDA\b/i,                    host: 'reda-pac.vercel.app' },
+        // MSMC — Marketing Stratégique et Management Commercial (RNCP 38504)
+        { rx: /\bMSMC\b|\b38504\b/i,                          host: 'msmc-pac.vercel.app' },
+        { rx: /\bmarketing\s+strat[eé]gique\b/i,              host: 'msmc-pac.vercel.app' },
+        { rx: /\bmanagement\s+commercial\b/i,                 host: 'msmc-pac.vercel.app' },
+      ];
+      for (var i = 0; i < PATTERNS.length; i++) {
+        if (PATTERNS[i].rx.test(blob)) return PATTERNS[i].host;
+      }
       return 'msmc-pac.vercel.app'; // défaut sûr
     }
     var INJECT_BLOC_ID     = bloc;
