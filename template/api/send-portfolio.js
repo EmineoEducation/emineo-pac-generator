@@ -1,9 +1,15 @@
 // ============================================================
 //  ÉMINÉO — api/send-portfolio.js
-//  Envoi du portfolio de fin de parcours via Resend.
-//  Expéditeur : portfolio@emineo-education.fr (no-reply).
-//  Template mail à la charte Éminéo intégré côté serveur.
+//  Envoi du portfolio de fin de parcours via Resend
+//  + coche de completion sur le portail (Redis du portail).
+//  ⚠️  __BLOC_ID__ et __PORTAL_HOST__ sont substitués par le générateur
+//      au moment du ZIP. Ne PAS les remplacer à la main.
 // ============================================================
+
+import { createHash } from 'crypto';
+
+const BLOC_ID     = '__BLOC_ID__';     // ex: 'bc1', 'bc2'... ou 'cdrh-bc1'
+const PORTAL_HOST = '__PORTAL_HOST__'; // ex: 'msmc-pac.vercel.app', 'cdrh-pac.vercel.app'
 
 const PORTFOLIO_FROM =
   process.env.PORTFOLIO_FROM ||
@@ -31,15 +37,47 @@ function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
+// SHA-256(email lowercased trimmed)[:24] — identique côté portail
+function hashEmail(email) {
+  return createHash('sha256')
+    .update(String(email || '').trim().toLowerCase())
+    .digest('hex')
+    .slice(0, 24);
+}
+
 /**
- * Habille le contenu du portfolio dans le gabarit e-mail Éminéo.
- * @param {object} p
- * @param {string} p.prenom
- * @param {string} p.nom
- * @param {string} p.formation   ex. "MSMC — RNCP 38504"
- * @param {string} p.bloc        ex. "BC1"
- * @param {string} p.contenuHtml corps du portfolio, déjà en HTML
+ * Coche de completion auprès du portail. À appeler AVANT Resend
+ * pour que la progression Redis soit garantie même si l'email échoue.
+ * Best-effort : ne lève pas, log seulement.
+ * @returns {Promise<boolean>} true si la coche a été acceptée
  */
+async function markCompleted(email) {
+  if (!email || !PORTAL_HOST || PORTAL_HOST.indexOf('__') === 0) {
+    console.warn('markCompleted skipped: missing email or unsubstituted PORTAL_HOST');
+    return false;
+  }
+  try {
+    const r = await fetch('https://' + PORTAL_HOST + '/api/progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        hash: hashEmail(email),
+        bloc: BLOC_ID,
+        status: 'completed'
+      })
+    });
+    if (!r.ok) {
+      const t = await r.text().catch(() => '');
+      console.warn('markCompleted non-OK:', r.status, t.slice(0, 200));
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn('markCompleted error:', e.message);
+    return false;
+  }
+}
+
 function buildPortfolioHtml(p) {
   const prenom = escapeHtml(p.prenom);
   const nom = escapeHtml(p.nom);
@@ -142,35 +180,38 @@ export default async function handler(req, res) {
       to,
       subject,
       bloc,
-      // données pour construire le mail côté serveur :
       prenom,
       nom,
       formation,
       contenuHtml,
-      studentName, // rétrocompat (ancien nom de champ)
-      html,        // rétrocompat : si le client envoie déjà un HTML complet
+      studentName,
+      html,
     } = body || {};
 
     if (!to) return res.status(400).json({ error: 'Missing required field: to' });
-
-    // Prénom : priorité au champ explicite, sinon dérivé de studentName
-    const _prenom = prenom || (studentName ? String(studentName).trim().split(/\s+/)[0] : '');
-    const _nom = nom || (studentName ? String(studentName).trim().split(/\s+/).slice(1).join(' ') : '');
-
-    // HTML : on respecte un html déjà fourni (rétrocompat), sinon on habille le contenu.
-    const finalHtml =
-      html ||
-      buildPortfolioHtml({ prenom: _prenom, nom: _nom, formation, bloc, contenuHtml });
 
     if (!html && !contenuHtml) {
       return res.status(400).json({ error: 'Missing portfolio content: provide html or contenuHtml' });
     }
 
+    // ── 1. Coche de completion AVANT Resend ──
+    // (garantit la progression Redis même si l'email échoue ensuite)
+    const completed = await markCompleted(to);
+
+    // Prénom : priorité au champ explicite, sinon dérivé de studentName
+    const _prenom = prenom || (studentName ? String(studentName).trim().split(/\s+/)[0] : '');
+    const _nom = nom || (studentName ? String(studentName).trim().split(/\s+/).slice(1).join(' ') : '');
+
+    const finalHtml =
+      html ||
+      buildPortfolioHtml({ prenom: _prenom, nom: _nom, formation, bloc: bloc || BLOC_ID, contenuHtml });
+
     const finalSubject =
-      subject || ('Votre portfolio' + (bloc ? ' — ' + bloc : '') + ' · Éminéo Education');
+      subject || ('Votre portfolio' + ((bloc || BLOC_ID) ? ' — ' + (bloc || BLOC_ID) : '') + ' · Éminéo Education');
 
     const finalText = buildPortfolioText({ prenom: _prenom, formation });
 
+    // ── 2. Envoi Resend ──
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
@@ -183,16 +224,22 @@ export default async function handler(req, res) {
         subject: finalSubject,
         html: finalHtml,
         text: finalText,
-        reply_to: [], // no-reply : pas d'adresse de réponse
+        reply_to: [],
       }),
     });
 
     const data = await response.json();
     if (!response.ok) {
+      // Resend KO mais la coche Redis est déjà passée → 200 avec warning
       console.error('Resend API error:', data);
-      return res.status(response.status).json(data);
+      return res.status(200).json({
+        sent: false,
+        completed,
+        warning: 'Email failed but progress saved on portal',
+        resendError: data
+      });
     }
-    return res.status(200).json({ ok: true, id: data.id });
+    return res.status(200).json({ sent: true, completed, id: data.id });
   } catch (err) {
     console.error('send-portfolio error:', err);
     return res.status(500).json({ error: 'send error', message: err.message });
