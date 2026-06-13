@@ -781,11 +781,29 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
       'api/chat.js', 'api/session.js', 'api/send-portfolio.js', 'vercel.json', 'package.json'
     ];
     // Calcul des paramètres injectés dans api/send-portfolio.js :
-    // BLOC_ID  = identifiant kebab-case du bloc (ex: 'bc1', 'cdrh-bc1')
-    // PORTAL_HOST = host du portail (ex: 'msmc-pac.vercel.app')
-    // Le générateur lit spec.meta.portal_host si présent, sinon retombe sur 'msmc-pac.vercel.app'.
-    var INJECT_BLOC_ID = bloc;
-    var INJECT_PORTAL_HOST = (spec.meta && spec.meta.portal_host) || 'msmc-pac.vercel.app';
+    // BLOC_ID     = identifiant kebab-case du bloc (ex: 'bc1', 'cdrh-bc1')
+    // PORTAL_HOST = host du portail, inféré selon ce protocole d'ordre fixe :
+    //   1. override explicite           → spec.meta.portal_host
+    //   2. inférence par mot-clé dans   → spec.meta.titre_rncp / titre / code_rncp / formation
+    //      (CDRH → cdrh-pac · MMD → mmd-pac · MDO → mdo-pac · REDA → reda-pac)
+    //   3. défaut                       → msmc-pac.vercel.app (titre historique)
+    function inferPortalHost(spec) {
+      var m = spec.meta || {};
+      if (m.portal_host) return m.portal_host;
+      var blob = [
+        m.titre_rncp, m.titre, m.formation, m.code_rncp,
+        m.intitule_bloc, m.organisme_certificateur
+      ].filter(Boolean).join(' ').toUpperCase();
+      if (/\bCDRH\b/.test(blob)) return 'cdrh-pac.vercel.app';
+      if (/\bMMD\b/.test(blob))  return 'mmd-pac.vercel.app';
+      if (/\bMDO\b/.test(blob))  return 'mdo-pac.vercel.app';
+      if (/\bREDA\b/.test(blob) || /\bBACH\s*REDA\b/.test(blob)) return 'reda-pac.vercel.app';
+      if (/\bMSMC\b/.test(blob) || /\b38504\b/.test(blob))       return 'msmc-pac.vercel.app';
+      return 'msmc-pac.vercel.app'; // défaut sûr
+    }
+    var INJECT_BLOC_ID     = bloc;
+    var INJECT_PORTAL_HOST = inferPortalHost(spec);
+    console.log('[generator] portal_host inféré:', INJECT_PORTAL_HOST, '· bloc:', INJECT_BLOC_ID);
     var missing = [];
     for (var i = 0; i < FIXED.length; i++) {
       try {
