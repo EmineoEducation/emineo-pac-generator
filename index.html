@@ -303,6 +303,23 @@ html,body{height:100%;font-family:'Inter',sans-serif;background:#F0EFEA;color:va
 
 <script>
 // ═══════════════════════════════════════════════════════════
+//  HELPERS GLOBAUX
+// ═══════════════════════════════════════════════════════════
+// Normalise un identifiant de bloc venu du RACE en un slug technique
+// stable, utilisé pour : Redis (PAC_CONFIG.bloc, BLOC_ID, clé portail),
+// nom de repo (lumio-XXX), nom de fichier ZIP.
+// Règles :
+//   "BC1"  → "bc1"   (MSMC, conserve le préfixe explicite)
+//   "1"    → "bc1"   (CDRH numérote sans préfixe → on l'ajoute)
+//   "4-I"  → "bc4-i" (sous-bloc : préfixe seulement si commence par chiffre)
+//   ""/null → "bc"   (cas dégénéré, ne devrait jamais arriver après le gate)
+function normalizeBlocId(raw) {
+  var s = String(raw == null ? '' : raw).toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  if (/^\d/.test(s)) s = 'bc' + s; // préfixe si commence par un chiffre
+  return s || 'bc';
+}
+
+// ═══════════════════════════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════════════════════════
 var S = { file: null, race: null, bloc: null, spec: null, files: {} };
@@ -783,7 +800,7 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
   btn.disabled = true; btn.innerHTML = '<span class="mini-spin"></span> ZIP…';
   try {
     var spec = S.spec;
-    var bloc = spec.meta.bloc.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    var bloc = normalizeBlocId(spec.meta.bloc);
     var zip  = new JSZip();
 
     // ── Runtime fixe : embarqué depuis template/ (→ PAC déployable sans recopie) ──
@@ -837,8 +854,9 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
     zip.file('app-livrable.jsx',  S.files['app-livrable.jsx']);
     zip.file('app-assistant.jsx', S.files['app-assistant.jsx']);
     zip.file('spec.json',         JSON.stringify(spec, null, 2));
+    var blocUpper = bloc.toUpperCase(); // pour affichage UI : "BC1" plutôt que "bc1"
     zip.file('README.md',
-      '# PAC ' + spec.meta.bloc + ' — ' + spec.meta.intitule_bloc + '\n\n'
+      '# PAC ' + blocUpper + ' — ' + spec.meta.intitule_bloc + '\n\n'
       + spec.meta.titre_rncp + '\n\n'
       + '## Déploiement\n'
       + '1. Créer le repo `lumio-' + bloc + '` avec **tout le contenu de ce ZIP**.\n'
@@ -860,7 +878,7 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
     var blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'PAC-' + spec.meta.bloc + '-' + spec.meta.titre_rncp.replace(/\s+/g, '-') + '.zip';
+    a.download = 'PAC-' + blocUpper + '-' + spec.meta.titre_rncp.replace(/\s+/g, '-') + '.zip';
     a.click();
     URL.revokeObjectURL(a.href);
     ss(3, '✅ ZIP téléchargé.', 'info');
@@ -872,7 +890,7 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
 //  BUILDERS spec → code
 // ═══════════════════════════════════════════════════════════
 function buildData(spec) {
-  var bloc  = spec.meta.bloc;
+  var bloc  = normalizeBlocId(spec.meta.bloc); // normalisé : "1" → "bc1"
   var cmd   = spec.commanditaire || { nom: 'Le commanditaire', role: 'Commanditaire' };
   var mn    = spec.moment_narratif || {};
   var slug  = (cmd.nom || 'contact').toLowerCase().split(' ')[0].replace(/[^a-z0-9]/g, '');
@@ -1005,7 +1023,7 @@ function buildData(spec) {
 }
 
 function buildLivrable(spec) {
-  var bloc = spec.meta.bloc;
+  var bloc = normalizeBlocId(spec.meta.bloc); // normalisé : "1" → "bc1"
   var head = '// ══════════════════════════════════════════════════════════════\n'
     + '//  LIVRABLE APP · PAC ' + bloc + ' · ' + spec.meta.titre_rncp + '\n'
     + '//  Composant générique — lit tout depuis window.PAC_CONFIG (competences, juryPrompt).\n'
@@ -1137,7 +1155,7 @@ function buildLivrable(spec) {
 }
 
 function buildAssistant(spec) {
-  var bloc = spec.meta.bloc;
+  var bloc = normalizeBlocId(spec.meta.bloc); // normalisé : "1" → "bc1"
   var head = '// ══════════════════════════════════════════════════════════════\n'
     + '//  JEFFERSON · PAC ' + bloc + '\n'
     + '//  Composant générique — guide par acte + chat. Lit window.PAC_CONFIG.\n'
