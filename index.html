@@ -1078,7 +1078,10 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
       'index.html', 'styles.css', 'icons.jsx', 'main.jsx', 'desktop.jsx',
       'app-mail.jsx', 'app-browser.jsx', 'app-pdf.jsx', 'app-voice.jsx',
       'app-notes.jsx', 'app-slack.jsx', 'app-extras.jsx', 'app-trash.jsx',
-      'api/chat.js', 'api/session.js', 'api/send-portfolio.js', 'vercel.json', 'package.json'
+      'api/chat.js', 'api/session.js', 'api/send-portfolio.js', 'vercel.json', 'package.json',
+      'portraits/theo-marczak.html', 'portraits/sonia-ferracci.html',
+      'portraits/camille-ott.html', 'portraits/yassine-morel.html',
+      'portraits/jakob-rein.html'
     ];
     // Calcul des paramètres injectés dans api/send-portfolio.js :
     // BLOC_ID     = identifiant kebab-case du bloc (ex: 'bc1', 'cdrh-bc1')
@@ -1131,6 +1134,8 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
       try {
         var r = await fetch('template/' + FIXED[i]);
         if (!r.ok) { missing.push(FIXED[i]); continue; }
+        var isBinary = /\.(png|jpg|jpeg|gif|webp)$/i.test(FIXED[i]);
+        if (isBinary) { zip.file(FIXED[i], await r.arrayBuffer()); continue; }
         var content = await r.text();
         if (FIXED[i] === 'api/send-portfolio.js') {
           content = content
@@ -1370,6 +1375,18 @@ function buildData(spec) {
     folders[fId] = { title: 'Acte ' + acte, sidebar: 'Acte ' + acte, icon: '📁', items: items };
     folderOrder.push(fId);
   });
+  // Portraits — personnages Lumio Health · invariant entre tous les titres
+  folders['portraits'] = {
+    title: 'Portraits équipe', sidebar: 'Portraits', icon: '🪪',
+    items: [
+      { kind: 'html', name: 'Théo Marczak — CEO',               app: 'browser', props: { url: 'portraits/theo-marczak.html'   } },
+      { kind: 'html', name: 'Sonia Ferracci — Dir. Marketing',  app: 'browser', props: { url: 'portraits/sonia-ferracci.html' } },
+      { kind: 'html', name: 'Camille Ott — Partenariats B2B',   app: 'browser', props: { url: 'portraits/camille-ott.html'    } },
+      { kind: 'html', name: 'Yassine Morel — Content Manager',  app: 'browser', props: { url: 'portraits/yassine-morel.html'  } },
+      { kind: 'html', name: 'Jakob Rein — Northgate Capital',   app: 'browser', props: { url: 'portraits/jakob-rein.html'     } }
+    ]
+  };
+  folderOrder.push('portraits');
   var finder = { folders: folders, order: folderOrder };
 
   // ── CALENDAR : généré depuis la date fictive (durée 18 j par convention PAC) ──
