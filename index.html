@@ -1079,9 +1079,9 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
       'app-mail.jsx', 'app-browser.jsx', 'app-pdf.jsx', 'app-voice.jsx',
       'app-notes.jsx', 'app-slack.jsx', 'app-extras.jsx', 'app-trash.jsx',
       'api/chat.js', 'api/session.js', 'api/send-portfolio.js', 'vercel.json', 'package.json',
-      'portraits/theo-marczak.html', 'portraits/sonia-ferracci.html',
-      'portraits/camille-ott.html', 'portraits/yassine-morel.html',
-      'portraits/jakob-rein.html'
+      'portraits/portrait_theo_marczak.html', 'portraits/portrait_sonia_ferracci.html',
+      'portraits/portrait_camille_ott.html', 'portraits/portrait_yassine_morel.html',
+      'portraits/portrait_jakob_rein.html'
     ];
     // Calcul des paramètres injectés dans api/send-portfolio.js :
     // BLOC_ID     = identifiant kebab-case du bloc (ex: 'bc1', 'cdrh-bc1')
@@ -1379,11 +1379,11 @@ function buildData(spec) {
   folders['portraits'] = {
     title: 'Portraits équipe', sidebar: 'Portraits', icon: '🪪',
     items: [
-      { kind: 'html', name: 'Théo Marczak — CEO',               app: 'browser', props: { url: 'portraits/theo-marczak.html'   } },
-      { kind: 'html', name: 'Sonia Ferracci — Dir. Marketing',  app: 'browser', props: { url: 'portraits/sonia-ferracci.html' } },
-      { kind: 'html', name: 'Camille Ott — Partenariats B2B',   app: 'browser', props: { url: 'portraits/camille-ott.html'    } },
-      { kind: 'html', name: 'Yassine Morel — Content Manager',  app: 'browser', props: { url: 'portraits/yassine-morel.html'  } },
-      { kind: 'html', name: 'Jakob Rein — Northgate Capital',   app: 'browser', props: { url: 'portraits/jakob-rein.html'     } }
+      { kind: 'html', name: 'Théo Marczak — CEO',               app: 'browser', props: { url: 'portraits/portrait_theo_marczak.html' } },
+      { kind: 'html', name: 'Sonia Ferracci — Dir. Marketing',  app: 'browser', props: { url: 'portraits/portrait_sonia_ferracci.html' } },
+      { kind: 'html', name: 'Camille Ott — Partenariats B2B',   app: 'browser', props: { url: 'portraits/portrait_camille_ott.html' } },
+      { kind: 'html', name: 'Yassine Morel — Content Manager',  app: 'browser', props: { url: 'portraits/portrait_yassine_morel.html' } },
+      { kind: 'html', name: 'Jakob Rein — Northgate Capital',   app: 'browser', props: { url: 'portraits/portrait_jakob_rein.html'     } }
     ]
   };
   folderOrder.push('portraits');
