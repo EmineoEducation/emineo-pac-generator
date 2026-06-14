@@ -933,7 +933,11 @@ function renderOutput() {
   enrichPanel.id = 'enrich-panel';
   var nbDocs = (spec.documents_fictifs || []).length;
   var alreadyEnriched = spec._enriched && spec._enriched.completedAt;
-  enrichPanel.style.cssText = 'margin:14px 0;padding:14px 16px;border-radius:10px;border:1px solid ' + (alreadyEnriched ? 'rgba(31,111,92,.3)' : 'rgba(13,59,54,.15)') + ';background:' + (alreadyEnriched ? 'var(--mint-soft)' : 'var(--paper)') + ';';
+  // Vert (fait) OU saumon Éminéo (alerte, pas encore fait) — pas de gris neutre qui invite à passer outre
+  enrichPanel.style.cssText = 'margin:14px 0;padding:16px 18px;border-radius:10px;border:1.5px solid '
+    + (alreadyEnriched ? 'rgba(31,111,92,.4)' : '#E89B77')
+    + ';background:' + (alreadyEnriched ? 'var(--mint-soft)' : 'rgba(232,155,119,.12)')
+    + ';';
   if (alreadyEnriched) {
     var enrichedDocs = (spec.documents_fictifs || []).filter(function(d){ return d.generated; }).length;
     var extras = ['pressArticle', 'fausseUne', 'slackSeed'].filter(function(k){ return spec._enriched[k]; }).length;
@@ -944,13 +948,13 @@ function renderOutput() {
       + '<button type="button" class="btn-sm" onclick="reEnrichSpec()" style="margin-top:8px">↻ Régénérer l\'étoffement</button>'
       + '</div>';
   } else {
-    enrichPanel.innerHTML = '<div style="font-family:\'Manrope\';font-weight:700;font-size:12px;margin-bottom:6px;">✨ Étoffement narratif (optionnel)</div>'
-      + '<div style="font-size:11.5px;color:var(--muted);line-height:1.5;margin-bottom:10px;">'
-      + 'Le ZIP actuel contient des <code style="background:rgba(0,0,0,.05);padding:1px 4px;border-radius:3px;">[À COMPLÉTER]</code> partout (corps emails, slides, pages de rapport, presse, Une, Slack). '
-      + 'Cliquer ci-dessous pour que Claude rédige automatiquement le contenu narratif à partir des <i>role_narratif</i> du RACE.<br>'
+    enrichPanel.innerHTML = '<div style="font-family:\'Manrope\';font-weight:700;font-size:13px;margin-bottom:8px;color:#8a3a17;">⚠ Étoffement narratif requis avant déploiement</div>'
+      + '<div style="font-size:11.5px;color:var(--muted);line-height:1.55;margin-bottom:12px;">'
+      + 'En l\'état, le ZIP contient des <code style="background:rgba(0,0,0,.05);padding:1px 4px;border-radius:3px;">[À COMPLÉTER]</code> dans <b>tous</b> les corps d\'emails, slides, pages de rapport, presse, Une et messages Slack — autrement dit le PAC est inutilisable pour les étudiants. '
+      + 'Le clic ci-dessous demande à Claude de rédiger ces contenus à partir des <i>role_narratif</i> extraits du RACE.<br>'
       + '<i>~' + (nbDocs + 3) + ' appels Claude · ~30-60s · coût ~€0.05.</i>'
       + '</div>'
-      + '<button type="button" id="btn-enrich" class="primary" onclick="doEnrichSpec()">✨ Étoffer le contenu narratif</button>'
+      + '<button type="button" id="btn-enrich" class="primary" onclick="doEnrichSpec()" style="background:#E89B77;border-color:#E89B77;">✨ Étoffer le contenu narratif</button>'
       + '<div id="enrich-progress" style="margin-top:10px;display:none;font-size:11.5px;color:var(--muted);"></div>';
   }
   fl.parentNode.insertBefore(enrichPanel, fl.nextSibling);
@@ -1049,6 +1053,18 @@ window.reEnrichSpec = function() {
 };
 
 document.getElementById('btn-zip').addEventListener('click', async function() {
+  // Garde-fou : si l'étoffement n'a pas été fait, demander confirmation explicite
+  if (S.spec && (!S.spec._enriched || !S.spec._enriched.completedAt)) {
+    var go = confirm(
+      '⚠ Étoffement narratif non effectué.\n\n' +
+      'Le ZIP contiendra des [À COMPLÉTER] dans TOUS les corps d\'emails, ' +
+      'slides, pages de rapport, presse, Une et Slack. Le PAC sera inutilisable ' +
+      'pour les étudiants en l\'état.\n\n' +
+      'Cliquer "Annuler" puis lancer ✨ Étoffer le contenu narratif (recommandé).\n' +
+      'Cliquer "OK" pour télécharger quand même (test technique uniquement).'
+    );
+    if (!go) return;
+  }
   if (!S.spec) return;
   var btn = document.getElementById('btn-zip');
   btn.disabled = true; btn.innerHTML = '<span class="mini-spin"></span> ZIP…';
