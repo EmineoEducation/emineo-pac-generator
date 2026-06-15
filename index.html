@@ -7,6 +7,25 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   PAC_MODELS — POINT DE VÉRITÉ UNIQUE DES IDs DE MODÈLE
+   Tout appel IA (générateur + fichiers générés + runtime) lit ICI.
+   IDs versionnés et validés (jamais d'alias). Vérifié 2026-06-09.
+   - JURY/LIVRABLE  → Sonnet (raisonnement, jugement RNCP)
+   - JEFFERSON      → Haiku  (guidage rapide, faible coût)
+   - INGEST (générateur, analyse PDF RACE) → Haiku
+   - SPEC  (générateur, génération de spec) → Sonnet
+   ⚠ claude-sonnet-4-5 retiré le 2026-06-15 — NE JAMAIS réintroduire.
+   ════════════════════════════════════════════════════════════════════ */
+var PAC_MODELS = {
+  JURY:     'claude-sonnet-4-6',
+  JEFFERSON:'claude-haiku-4-5-20251001',
+  INGEST:   'claude-haiku-4-5-20251001',
+  SPEC:     'claude-sonnet-4-6'
+};
+</script>
 <style>
 :root{--ink:#0D3B36;--mint:#8FF2C2;--mint-soft:#E8FBF1;--mint-mid:#C7F4DD;--green:#1F6F5C;--paper:#FAFAF7;--muted:#6B7B78;--rule:rgba(13,59,54,.1);--red:#C0392B;}
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -284,6 +303,23 @@ html,body{height:100%;font-family:'Inter',sans-serif;background:#F0EFEA;color:va
 
 <script>
 // ═══════════════════════════════════════════════════════════
+//  HELPERS GLOBAUX
+// ═══════════════════════════════════════════════════════════
+// Normalise un identifiant de bloc venu du RACE en un slug technique
+// stable, utilisé pour : Redis (PAC_CONFIG.bloc, BLOC_ID, clé portail),
+// nom de repo (lumio-XXX), nom de fichier ZIP.
+// Règles :
+//   "BC1"  → "bc1"   (MSMC, conserve le préfixe explicite)
+//   "1"    → "bc1"   (CDRH numérote sans préfixe → on l'ajoute)
+//   "4-I"  → "bc4-i" (sous-bloc : préfixe seulement si commence par chiffre)
+//   ""/null → "bc"   (cas dégénéré, ne devrait jamais arriver après le gate)
+function normalizeBlocId(raw) {
+  var s = String(raw == null ? '' : raw).toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  if (/^\d/.test(s)) s = 'bc' + s; // préfixe si commence par un chiffre
+  return s || 'bc';
+}
+
+// ═══════════════════════════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════════════════════════
 var S = { file: null, race: null, bloc: null, spec: null, files: {} };
@@ -456,7 +492,7 @@ document.getElementById('btn-ingest').addEventListener('click', async function()
       },
       signal: AbortSignal.timeout(180000),
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: PAC_MODELS.INGEST,
         max_tokens: 16000,
         system: INGEST_SYS,
         messages: [{
@@ -546,22 +582,21 @@ function selectBloc(b) {
 var SPEC_SYS = 'Tu es un ingénieur pédagogique et développeur expert PAC (Parcours Activation Compétences — Éminéo). Réponds UNIQUEMENT avec le JSON brut demandé, sans backticks ni texte autour.';
 
 function specPrompt(b, ctx, race) {
-  var rTitre  = (race && race.titre)                   ? race.titre                   : '?';
-  var rCode   = (race && race.code_rncp)               ? race.code_rncp               : '?';
-  var rNiveau = (race && race.niveau)                  ? race.niveau                  : '?';
+  var rTitre  = (race && race.titre) ? race.titre : '?';
+  var rCode   = (race && race.code_rncp) ? race.code_rncp : '?';
+  var rNiveau = (race && race.niveau) ? race.niveau : '?';
   var rOrg    = (race && race.organisme_certificateur) ? race.organisme_certificateur : '?';
   return 'RÉFÉRENTIEL RNCP (à recopier VERBATIM dans meta) :\n'
     + '  titre_rncp : ' + rTitre + '\n'
-    + '  code_rncp  : ' + rCode  + '\n'
+    + '  code_rncp  : ' + rCode + '\n'
     + '  niveau     : ' + rNiveau + '\n'
     + '  organisme  : ' + rOrg + '\n\n'
     + 'BLOC :\n' + JSON.stringify(b, null, 2)
     + '\n\nCONTEXTE LUMIO :\n' + (ctx || 'Univers Lumio Health — medtech parisienne wearables stress. Personnages : Sonia Ferracci (DirMkt), Théo Marczak (CEO), Camille Ott (B2B), Yassine Morel (Content), Jakob Rein (Northgate).')
-    + '\n\nGénère ce JSON :\n{"meta":{"titre_rncp":string,"code_rncp":string,"bloc":string,"intitule_bloc":string,"epreuve":string,"duree_reelle_min":210,"note_reflexive":boolean,"accroche":string},"moment_narratif":{"date_fictive":string,"titre_affaire":string,"situation":string,"enjeu_central":string},"commanditaire":{"nom":string,"role":string},"competences":[{"code":string,"label":string,"rncp":string,"placeholder":string,"min_mots":number,"mots_cles":[string],"conseil":string}],"livrable":{"format":string,"total_mots_min":520,"note_reflexive_min":100},"jury_criteres_eliminatoires":[string],"documents_fictifs":[{"id":string,"type":string,"expediteur":string,"objet":string,"role_narratif":string,"acte":number}],"easter_egg":{"type":"whatsapp","personnages":[string,string],"tension_revelee":string}}'
+    + '\n\nGénère ce JSON :\n{"meta":{"titre_rncp":string,"code_rncp":string,"bloc":string,"intitule_bloc":string,"epreuve":string,"duree_reelle_min":210,"note_reflexive":boolean},"moment_narratif":{"date_fictive":string,"titre_affaire":string,"situation":string,"enjeu_central":string},"commanditaire":{"nom":string,"role":string},"competences":[{"code":string,"label":string,"rncp":string,"placeholder":string,"min_mots":number,"mots_cles":[string],"conseil":string}],"livrable":{"format":string,"total_mots_min":520,"note_reflexive_min":100},"jury_criteres_eliminatoires":[string],"documents_fictifs":[{"id":string,"type":string,"expediteur":string,"objet":string,"role_narratif":string,"acte":number}],"easter_egg":{"type":"whatsapp","personnages":[string,string],"tension_revelee":string}}'
     + '\nRÈGLES :'
     + '\n  - meta.titre_rncp = recopier EXACTEMENT le titre_rncp ci-dessus (ne pas paraphraser, ne pas inventer).'
     + '\n  - meta.code_rncp  = recopier EXACTEMENT le code_rncp ci-dessus.'
-    + '\n  - meta.accroche   = 2-3 phrases HTML (<strong> et <em> autorisées). Commence par "Tu es mandaté·e par <strong>[Prénom Nom, Rôle]</strong>". Pose la situation, l\'enjeu, les ressources disponibles. Dernière phrase en <em>italique</em>, formule-choc qui donne l\'urgence.'
     + '\n  - competences[].rncp = VERBATIM depuis le bloc.'
     + '\n  - jury_criteres_eliminatoires = 5+ dont un sur rôles/responsabilités ET un sur indicateurs d\'impact.'
     + '\n  - documents_fictifs = 6-8 répartis sur 5 actes.';
@@ -591,7 +626,7 @@ document.getElementById('btn-generate').addEventListener('click', async function
       },
       signal: AbortSignal.timeout(180000),
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: PAC_MODELS.SPEC,
         max_tokens: 12000,
         system: SPEC_SYS,
         messages: [{ role: 'user', content: specPrompt(S.bloc, ctx, S.race) }]
@@ -622,6 +657,255 @@ document.getElementById('btn-generate').addEventListener('click', async function
 document.getElementById('btn-back').addEventListener('click', function() { goTo(2); });
 
 // ═══════════════════════════════════════════════════════════
+//  GATE DE VALIDATION BLOQUANT — aucun ZIP cassé ne sort d'ici
+//  Renvoie { ok:bool, errors:[], checks:[{name, ok, detail}] }
+// ═══════════════════════════════════════════════════════════
+// Schéma RÉEL produit par buildData() — pas les clés du RACE ingéré.
+// Clés requises non-vides : strings simples (bloc, titre, epreuve, commanditaire, juryPrompt)
+// Tableaux requis non-vides : temps[], competences[]
+var PAC_CONFIG_REQUIRED_STRINGS = ['bloc','titre','epreuve','commanditaire','juryPrompt'];
+var PAC_CONFIG_REQUIRED_ARRAYS  = ['temps','competences'];
+
+function validateJSX(filename, src) {
+  try {
+    Babel.transform(src, { presets: ['react'], filename: filename });
+    return { name: filename + ' · transpile JSX', ok: true, detail: 'Babel OK' };
+  } catch (e) {
+    return { name: filename + ' · transpile JSX', ok: false, detail: String(e.message).split('\n')[0] };
+  }
+}
+
+function validateDataJs(src) {
+  // Exécute data.js dans un scope isolé, capture window.LUMIO_DATA + window.PAC_CONFIG
+  var out = { name: 'data.js · exécution + clés PAC_CONFIG', ok: false, detail: '' };
+  try {
+    var sandbox = { LUMIO_DATA: undefined, PAC_CONFIG: undefined, PASS_CONFIG: undefined, console: console };
+    var fn = new Function('window', src + '\n;return { LUMIO_DATA: window.LUMIO_DATA, PAC_CONFIG: window.PAC_CONFIG, PASS_CONFIG: window.PASS_CONFIG };');
+    var res = fn(sandbox);
+    if (!res.LUMIO_DATA || typeof res.LUMIO_DATA !== 'object') {
+      out.detail = 'window.LUMIO_DATA absent ou non-objet après exécution'; return out;
+    }
+    var cfg = res.PAC_CONFIG || res.PASS_CONFIG;
+    if (!cfg) { out.detail = 'window.PAC_CONFIG (ni PASS_CONFIG) défini'; return out; }
+    var missingStr = PAC_CONFIG_REQUIRED_STRINGS.filter(function(k){ return cfg[k] == null || cfg[k] === ''; });
+    var missingArr = PAC_CONFIG_REQUIRED_ARRAYS.filter(function(k){ return !Array.isArray(cfg[k]) || cfg[k].length === 0; });
+    if (missingStr.length || missingArr.length) {
+      var parts = [];
+      if (missingStr.length) parts.push('strings vides : ' + missingStr.join(', '));
+      if (missingArr.length) parts.push('tableaux vides : ' + missingArr.join(', '));
+      out.detail = 'Clés PAC_CONFIG ' + parts.join(' · ');
+      return out;
+    }
+    var total = PAC_CONFIG_REQUIRED_STRINGS.length + PAC_CONFIG_REQUIRED_ARRAYS.length;
+    out.ok = true;
+    out.detail = 'LUMIO_DATA + ' + total + ' clés PAC_CONFIG OK (competences: ' + cfg.competences.length + ', temps: ' + cfg.temps.length + ')';
+    return out;
+  } catch (e) {
+    out.detail = 'Erreur exécution data.js : ' + String(e.message).split('\n')[0];
+    return out;
+  }
+}
+
+function validateModelResidue(files) {
+  // Garde-fou anti-régression : aucun ID retiré ne doit fuiter dans les fichiers générés
+  var forbidden = ['claude-sonnet-4-5','claude-3-','claude-sonnet-4-20250514','claude-opus-4-20250514'];
+  var hits = [];
+  Object.keys(files).forEach(function(nm){
+    forbidden.forEach(function(id){ if (files[nm].indexOf(id) !== -1) hits.push(nm + ' → ' + id); });
+  });
+  return {
+    name: 'IDs modèle · aucun identifiant retiré',
+    ok: hits.length === 0,
+    detail: hits.length ? 'Résidu interdit : ' + hits.join(' ; ') : 'Aucun ID retiré détecté'
+  };
+}
+
+function validatePAC(files) {
+  var checks = [
+    validateDataJs(files['data.js']),
+    validateJSX('app-livrable.jsx', files['app-livrable.jsx']),
+    validateJSX('app-assistant.jsx', files['app-assistant.jsx']),
+    validateModelResidue(files)
+  ];
+  var errors = checks.filter(function(c){ return !c.ok; }).map(function(c){ return c.name + ' — ' + c.detail; });
+  return { ok: errors.length === 0, errors: errors, checks: checks };
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ÉTOFFEMENT NARRATIF VIA CLAUDE
+//  Transforme les role_narratif du RACE en contenu rédigé.
+//  Stocke dans spec._enriched (consommé par buildData).
+// ═══════════════════════════════════════════════════════════
+var LUMIO_UNIVERSE = [
+  'UNIVERS — LUMIO HEALTH',
+  'Lumio Health est une medtech parisienne fondée en 2018 par Théo Marczak.',
+  'Wearables de mesure du stress au travail. 180 clients B2B fidèles.',
+  'Pression du fonds Northgate Capital pour pivoter B2C.',
+  '',
+  'PERSONNAGES RÉCURRENTS (utilisés selon le bloc) :',
+  '- Théo Marczak : CEO fondateur, énergique, vision-driven, parfois impulsif.',
+  '- Sonia Ferracci : Directrice Marketing (arrivée jan. 2026), méthodique, posture pédagogique.',
+  '- Camille Ott : Responsable partenariats B2B, terrain, attentive aux équipes.',
+  '- Yassine Morel : Content Manager, perfectionniste, signes de surmenage. RQTH.',
+  '- Jakob Rein : Partner Northgate Capital, exigeant, focus ROI et croissance.',
+  '',
+  'TON & STYLE :',
+  '- Communication professionnelle française, claire, sans corporate creux.',
+  '- Du concret : chiffres, dates, noms, références précises.',
+  '- Le ton varie selon l\'auteur (Théo direct/impulsif, Sonia posée, Jakob pressant).',
+  '- Confidentialité parfois requise (notes internes, propositions commerciales).'
+].join('\n');
+
+function buildEnrichmentContext(spec) {
+  var mn = spec.moment_narratif || {};
+  var cmd = spec.commanditaire || {};
+  return [
+    LUMIO_UNIVERSE, '',
+    'CONTEXTE DU BLOC',
+    'Titre RNCP : ' + (spec.meta.titre_rncp || ''),
+    'Bloc : ' + (spec.meta.intitule_bloc || ''),
+    'Affaire : ' + (mn.titre_affaire || ''),
+    'Date fictive : ' + (mn.date_fictive || ''),
+    'Situation : ' + (mn.situation || ''),
+    'Enjeu central : ' + (mn.enjeu_central || ''),
+    'Commanditaire : ' + (cmd.nom || '') + ' — ' + (cmd.role || ''), '',
+    'COMPÉTENCES VISÉES (le contenu doit permettre de les activer) :',
+    (spec.competences || []).map(function(c){ return '- ' + c.code + ' : ' + c.label; }).join('\n')
+  ].join('\n');
+}
+
+function parseClaudeJSON(text) {
+  if (!text) throw new Error('Réponse vide');
+  var clean = text.trim().replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+  var idx = clean.search(/[\{\[]/);
+  if (idx > 0) clean = clean.slice(idx);
+  var lastBrace = Math.max(clean.lastIndexOf('}'), clean.lastIndexOf(']'));
+  if (lastBrace > 0 && lastBrace < clean.length - 1) clean = clean.slice(0, lastBrace + 1);
+  return JSON.parse(clean);
+}
+
+async function callClaude(prompt, apiKey, maxTokens) {
+  var resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: maxTokens || 1800,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+  if (!resp.ok) {
+    var errText = await resp.text().catch(function(){ return resp.statusText; });
+    throw new Error('Claude API ' + resp.status + ' : ' + errText.slice(0, 200));
+  }
+  var data = await resp.json();
+  if (!data.content || !data.content[0]) throw new Error('Réponse Claude sans content');
+  return data.content[0].text;
+}
+
+// Mini-classifier (même logique que routeDocument côté buildData)
+function classifyDocumentType(doc) {
+  var t = String(doc.type || '').toLowerCase();
+  if (/email|courriel|message[s]?\b/.test(t))                    return 'mailbox';
+  if (/note[s]?|m[eé]mo|verbatim|alerte/.test(t))                return 'notes';
+  if (/deck|pr[eé]sentation|board|proposition|pitch|slide/.test(t)) return 'deck';
+  return 'rich';
+}
+
+async function enrichDocument(doc, ctx, apiKey) {
+  var kind = classifyDocumentType(doc);
+  var schema, instruction;
+  if (kind === 'mailbox') {
+    schema = '{"subject": "<sujet>", "body": "<corps 6-12 lignes, signature incluse>", "preview": "<1 phrase, 100 car max>"}';
+    instruction = 'Rédige un email professionnel français complet, signé par ' + (doc.expediteur || '?') + '. Garde le ton du personnage. Si le rôle narratif suggère une tension ou une omission, fais-la transparaître implicitement.';
+  } else if (kind === 'notes') {
+    schema = '{"title": "<titre court>", "kicker": "<étiquette MAJUSCULES>", "body": "<corps 4-8 lignes>", "preview": "<1 phrase 100 car max>"}';
+    instruction = 'Rédige une note interne courte et factuelle. Pas de signature.';
+  } else if (kind === 'deck') {
+    schema = '{"title": "<titre>", "subtitle": "<sous-titre>", "slides": [{"titre": "<titre slide>", "contenu": "<contenu 4-8 lignes>"}, {"titre": "<...>", "contenu": "<...>"}, {"titre": "<...>", "contenu": "<...>", "callout": "<point attention si pertinent, sinon omettre>"}]}';
+    instruction = 'Rédige un deck en 3-4 slides. Chiffres concrets quand pertinent.';
+  } else {
+    schema = '{"title": "<titre>", "pages": [{"kicker": "<étiquette MAJ>", "title": "<titre principal>", "byline": "<auteur · date>", "blocks": [{"type": "p", "text": "<paragraphe>"}, {"type": "h2", "text": "<sous-titre>"}, {"type": "p", "text": "<paragraphe>"}, {"type": "callout", "text": "<point clé>"}]}]}';
+    instruction = 'Rédige un document structuré (rapport, compte-rendu, dossier). 1 page suffit. 4-8 blocs mix de "p"/"h2"/"callout".';
+  }
+  var prompt = ctx + '\n\n═══ DOCUMENT À RÉDIGER ═══\n'
+    + 'Type : ' + (doc.type || '') + '\n'
+    + 'Expéditeur/Auteur : ' + (doc.expediteur || '') + '\n'
+    + 'Objet : ' + (doc.objet || '') + '\n'
+    + 'Acte narratif : ' + (doc.acte || '?') + ' (1=ancrage, 2=affaire, 3=diagnostic, 4=production, 5=réflexion)\n'
+    + 'Rôle narratif : ' + (doc.role_narratif || '') + '\n\n'
+    + instruction + '\n\n'
+    + 'RÉPONDS UNIQUEMENT EN JSON VALIDE, sans ```json wrappers, ce schéma exact :\n' + schema;
+  var text = await callClaude(prompt, apiKey, 1800);
+  return parseClaudeJSON(text);
+}
+
+async function enrichPress(ctx, apiKey) {
+  var prompt = ctx + '\n\n'
+    + 'Rédige UN article de presse fictif crédible (type Les Échos, L\'Usine Digitale) qui traite indirectement de l\'enjeu central. '
+    + 'L\'article ne doit PAS révéler la solution — il alimente le contexte étudiant.\n\n'
+    + 'JSON STRICT, sans backticks :\n'
+    + '{"source": "<média>", "host": "<domaine sans https>", "url": "<host>/<slug>", "author": "<journaliste>", "date": "<date>", "headline": "<titre>", "lede": "<chapeau 1-2 phrases>", "body": "<8-15 lignes, paragraphes séparés par \\n\\n>"}';
+  var text = await callClaude(prompt, apiKey, 1500);
+  return parseClaudeJSON(text);
+}
+
+async function enrichFausseUne(ctx, apiKey) {
+  var prompt = ctx + '\n\n'
+    + 'Rédige une "Une" de presse fictive (type Le Monde, Les Échos) qui crée une PRESSION supplémentaire sur le commanditaire ou Lumio Health. '
+    + 'En lien avec l\'enjeu central, sans révéler la solution.\n\n'
+    + 'JSON STRICT, sans backticks :\n'
+    + '{"source": "<quotidien>", "host": "<domaine>", "rubrique": "<ex: Économie & Entreprises>", "kicker": "<étiquette courte>", "date": "<date>", "headline": "<titre choc>", "chapeau": "<2-3 phrases>", "body": "<6-10 lignes>"}';
+  var text = await callClaude(prompt, apiKey, 1500);
+  return parseClaudeJSON(text);
+}
+
+async function enrichSlackSeed(spec, apiKey) {
+  var ctx = buildEnrichmentContext(spec);
+  var cmd = spec.commanditaire || {};
+  var prompt = ctx + '\n\n'
+    + 'Rédige 2-3 messages Slack initiaux envoyés par ' + (cmd.nom || 'le commanditaire') + ' à {{PRENOM}} en début de mission. '
+    + 'Ton conversationnel mais professionnel, ponctuation Slack (pas de point final, parfois lowercase). '
+    + 'Messages courts (1-3 phrases). Le dernier doit poser une attente claire.\n\n'
+    + 'JSON STRICT, sans backticks :\n'
+    + '{"messages": [{"time": "<HH:MM>", "text": "<message 1>"}, {"time": "<HH:MM>", "text": "<message 2>"}]}';
+  var text = await callClaude(prompt, apiKey, 1000);
+  return parseClaudeJSON(text);
+}
+
+async function enrichSpec(spec, onProgress) {
+  var apiKey = localStorage.getItem('pac_anthropic_key') || '';
+  if (!apiKey) throw new Error('Clé API Anthropic absente — saisis-la à l\'étape 1.');
+  var ctx = buildEnrichmentContext(spec);
+  var docs = spec.documents_fictifs || [];
+  var totalSteps = docs.length + 3;
+  var step = 0;
+  spec._enriched = spec._enriched || {};
+  for (var i = 0; i < docs.length; i++) {
+    step++;
+    onProgress(step, totalSteps, 'Document ' + (i + 1) + '/' + docs.length + ' · ' + (docs[i].type || ''));
+    try { docs[i].generated = await enrichDocument(docs[i], ctx, apiKey); }
+    catch (e) { console.warn('enrichDocument failed for doc ' + i + ':', e.message); docs[i]._enrichError = e.message; }
+  }
+  step++; onProgress(step, totalSteps, 'Article de presse');
+  try { spec._enriched.pressArticle = await enrichPress(ctx, apiKey); }
+  catch (e) { console.warn('enrichPress failed:', e.message); spec._enriched._pressError = e.message; }
+  step++; onProgress(step, totalSteps, 'Fausse Une');
+  try { spec._enriched.fausseUne = await enrichFausseUne(ctx, apiKey); }
+  catch (e) { console.warn('enrichFausseUne failed:', e.message); spec._enriched._uneError = e.message; }
+  step++; onProgress(step, totalSteps, 'Messages Slack initiaux');
+  try { spec._enriched.slackSeed = await enrichSlackSeed(spec, apiKey); }
+  catch (e) { console.warn('enrichSlackSeed failed:', e.message); spec._enriched._slackError = e.message; }
+  spec._enriched.completedAt = new Date().toISOString();
+  return spec;
+}
+
+// ═══════════════════════════════════════════════════════════
 //  RENDU OUTPUT
 // ═══════════════════════════════════════════════════════════
 function renderOutput() {
@@ -631,6 +915,10 @@ function renderOutput() {
     + '<div class="output-bloc-title">' + esc(spec.meta.intitule_bloc) + '</div>'
     + '<div style="font-size:11px;color:var(--muted);margin-top:3px;">' + esc(spec.moment_narratif.titre_affaire) + ' · ' + esc(spec.moment_narratif.date_fictive) + '</div>';
 
+  // FIX : supprimer les anciens panneaux pour éviter empilement à chaque re-render
+  var oldEnrich = document.getElementById('enrich-panel'); if (oldEnrich) oldEnrich.remove();
+  var oldGate   = document.getElementById('gate-panel');   if (oldGate)   oldGate.remove();
+
   var fl = document.getElementById('output-file-list');
   fl.innerHTML = '';
   ['data.js','app-livrable.jsx','app-assistant.jsx'].forEach(function(nm) {
@@ -639,7 +927,59 @@ function renderOutput() {
       + '<button type="button" class="output-file-btn" onclick="cpFile(\'' + nm + '\')">Copier</button>';
     fl.appendChild(it);
   });
-  document.getElementById('btn-zip').disabled = false;
+
+  // ── PANNEAU ÉTOFFEMENT NARRATIF ──
+  var enrichPanel = document.createElement('div');
+  enrichPanel.id = 'enrich-panel';
+  var nbDocs = (spec.documents_fictifs || []).length;
+  var alreadyEnriched = spec._enriched && spec._enriched.completedAt;
+  // Vert (fait) OU saumon Éminéo (alerte, pas encore fait) — pas de gris neutre qui invite à passer outre
+  enrichPanel.style.cssText = 'margin:14px 0;padding:16px 18px;border-radius:10px;border:1.5px solid '
+    + (alreadyEnriched ? 'rgba(31,111,92,.4)' : '#E89B77')
+    + ';background:' + (alreadyEnriched ? 'var(--mint-soft)' : 'rgba(232,155,119,.12)')
+    + ';';
+  if (alreadyEnriched) {
+    var enrichedDocs = (spec.documents_fictifs || []).filter(function(d){ return d.generated; }).length;
+    var extras = ['pressArticle', 'fausseUne', 'slackSeed'].filter(function(k){ return spec._enriched[k]; }).length;
+    enrichPanel.innerHTML = '<div style="font-family:\'Manrope\';font-weight:700;font-size:12px;margin-bottom:6px;">✨ Étoffement narratif terminé</div>'
+      + '<div style="font-size:11.5px;color:var(--muted);line-height:1.5;">'
+      + enrichedDocs + '/' + nbDocs + ' documents enrichis · ' + extras + '/3 bonus (presse, Une, Slack)<br>'
+      + 'Les <code style="background:rgba(0,0,0,.05);padding:1px 4px;border-radius:3px;">[À COMPLÉTER]</code> sont remplacés par du contenu Claude.<br>'
+      + '<button type="button" class="btn-sm" onclick="reEnrichSpec()" style="margin-top:8px">↻ Régénérer l\'étoffement</button>'
+      + '</div>';
+  } else {
+    enrichPanel.innerHTML = '<div style="font-family:\'Manrope\';font-weight:700;font-size:13px;margin-bottom:8px;color:#8a3a17;">⚠ Étoffement narratif requis avant déploiement</div>'
+      + '<div style="font-size:11.5px;color:var(--muted);line-height:1.55;margin-bottom:12px;">'
+      + 'En l\'état, le ZIP contient des <code style="background:rgba(0,0,0,.05);padding:1px 4px;border-radius:3px;">[À COMPLÉTER]</code> dans <b>tous</b> les corps d\'emails, slides, pages de rapport, presse, Une et messages Slack — autrement dit le PAC est inutilisable pour les étudiants. '
+      + 'Le clic ci-dessous demande à Claude de rédiger ces contenus à partir des <i>role_narratif</i> extraits du RACE.<br>'
+      + '<i>~' + (nbDocs + 3) + ' appels Claude · ~30-60s · coût ~€0.05.</i>'
+      + '</div>'
+      + '<button type="button" id="btn-enrich" class="primary" onclick="doEnrichSpec()" style="background:#E89B77;border-color:#E89B77;">✨ Étoffer le contenu narratif</button>'
+      + '<div id="enrich-progress" style="margin-top:10px;display:none;font-size:11.5px;color:var(--muted);"></div>';
+  }
+  fl.parentNode.insertBefore(enrichPanel, fl.nextSibling);
+
+  // ── GATE BLOQUANT : le ZIP ne s'active QUE si tout passe ──
+  var V = validatePAC(S.files);
+  var gatePanel = document.createElement('div');
+  gatePanel.id = 'gate-panel';
+  gatePanel.style.cssText = 'margin:14px 0;padding:14px 16px;border-radius:10px;border:1px solid ' + (V.ok ? 'rgba(31,111,92,.3)' : 'var(--red)') + ';background:' + (V.ok ? 'var(--mint-soft)' : 'rgba(192,57,43,.06)') + ';';
+  var rows = V.checks.map(function(c){
+    return '<div style="display:flex;gap:8px;align-items:flex-start;font-size:11.5px;line-height:1.5;margin:3px 0;">'
+      + '<span>' + (c.ok ? '✅' : '❌') + '</span>'
+      + '<span style="flex:1"><b>' + esc(c.name) + '</b><br><span style="color:var(--muted)">' + esc(c.detail) + '</span></span></div>';
+  }).join('');
+  gatePanel.innerHTML = '<div style="font-family:\'Manrope\';font-weight:700;font-size:12px;margin-bottom:8px;">'
+    + (V.ok ? '✓ Validation passée — bloc déployable' : '✗ Validation échouée — ZIP bloqué')
+    + '</div>' + rows;
+  fl.parentNode.insertBefore(gatePanel, enrichPanel.nextSibling);
+
+  var zb = document.getElementById('btn-zip');
+  zb.disabled = !V.ok;
+  if (!V.ok) {
+    zb.title = 'Corrige les erreurs de validation avant de télécharger';
+    ss(3, '⚠ ' + V.errors.length + ' erreur(s) de validation — le ZIP est bloqué. Voir le détail ci-dessus.', 'error');
+  }
 
   var oc = document.getElementById('output-content');
   oc.innerHTML = '';
@@ -679,13 +1019,58 @@ window.cpFile = function(k) {
 // ═══════════════════════════════════════════════════════════
 //  ZIP
 // ═══════════════════════════════════════════════════════════
+// ── Handlers étoffement narratif ──
+window.doEnrichSpec = async function() {
+  var btn = document.getElementById('btn-enrich');
+  var prog = document.getElementById('enrich-progress');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Étoffement en cours…'; }
+  if (prog) prog.style.display = 'block';
+  try {
+    await enrichSpec(S.spec, function(step, total, label) {
+      var pct = Math.round((step / total) * 100);
+      if (prog) prog.innerHTML = 'Étape ' + step + '/' + total + ' · ' + esc(label) + ' · <b>' + pct + '%</b>';
+    });
+    // Persister + régénérer les fichiers consommateurs (data.js et app-assistant lisent l'enrichissement)
+    S.files['data.js']         = buildData(S.spec);
+    S.files['app-livrable.jsx'] = buildLivrable(S.spec);
+    S.files['app-assistant.jsx'] = buildAssistant(S.spec);
+    try { sessionStorage.setItem('pac_v2', JSON.stringify({race: S.race, spec: S.spec, files: S.files, bloc: S.bloc})); } catch(e){}
+    renderOutput(); // re-rendu : le panneau passe en mode "terminé"
+    ss(3, '✨ Étoffement terminé — data.js régénéré avec contenu rédigé', 'info');
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.innerHTML = '✨ Étoffer le contenu narratif'; }
+    if (prog) prog.innerHTML = '<span style="color:var(--red)">❌ ' + esc(e.message) + '</span>';
+  }
+};
+window.reEnrichSpec = function() {
+  // Reset des enrichissements et relance
+  if (S.spec) {
+    delete S.spec._enriched;
+    (S.spec.documents_fictifs || []).forEach(function(d) { delete d.generated; delete d._enrichError; });
+    renderOutput();
+    setTimeout(window.doEnrichSpec, 50);
+  }
+};
+
 document.getElementById('btn-zip').addEventListener('click', async function() {
+  // Garde-fou : si l'étoffement n'a pas été fait, demander confirmation explicite
+  if (S.spec && (!S.spec._enriched || !S.spec._enriched.completedAt)) {
+    var go = confirm(
+      '⚠ Étoffement narratif non effectué.\n\n' +
+      'Le ZIP contiendra des [À COMPLÉTER] dans TOUS les corps d\'emails, ' +
+      'slides, pages de rapport, presse, Une et Slack. Le PAC sera inutilisable ' +
+      'pour les étudiants en l\'état.\n\n' +
+      'Cliquer "Annuler" puis lancer ✨ Étoffer le contenu narratif (recommandé).\n' +
+      'Cliquer "OK" pour télécharger quand même (test technique uniquement).'
+    );
+    if (!go) return;
+  }
   if (!S.spec) return;
   var btn = document.getElementById('btn-zip');
   btn.disabled = true; btn.innerHTML = '<span class="mini-spin"></span> ZIP…';
   try {
     var spec = S.spec;
-    var bloc = spec.meta.bloc.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    var bloc = normalizeBlocId(spec.meta.bloc);
     var zip  = new JSZip();
 
     // ── Runtime fixe : embarqué depuis template/ (→ PAC déployable sans recopie) ──
@@ -693,14 +1078,71 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
       'index.html', 'styles.css', 'icons.jsx', 'main.jsx', 'desktop.jsx',
       'app-mail.jsx', 'app-browser.jsx', 'app-pdf.jsx', 'app-voice.jsx',
       'app-notes.jsx', 'app-slack.jsx', 'app-extras.jsx', 'app-trash.jsx',
-      'api/chat.js', 'api/session.js', 'vercel.json', 'package.json'
+      'api/chat.js', 'api/session.js', 'api/send-portfolio.js', 'vercel.json', 'package.json',
+      'portraits/portrait_theo_marczak.html', 'portraits/portrait_sonia_ferracci.html',
+      'portraits/portrait_camille_ott.html', 'portraits/portrait_yassine_morel.html',
+      'portraits/portrait_jakob_rein.html'
     ];
+    // Calcul des paramètres injectés dans api/send-portfolio.js :
+    // BLOC_ID     = identifiant kebab-case du bloc (ex: 'bc1', 'cdrh-bc1')
+    // PORTAL_HOST = host du portail, inféré selon ce protocole d'ordre fixe :
+    //   1. override explicite           → spec.meta.portal_host
+    //   2. table de patterns (premier match gagne)
+    //      → sigles internes (CDRH, MSMC, MMD, MDO, REDA) + 38504
+    //      → titres RNCP textuels (ressources humaines, marketing stratégique, etc.)
+    //   3. défaut                       → msmc-pac.vercel.app (titre historique)
+    function inferPortalHost(spec) {
+      var m = spec.meta || {};
+      if (m.portal_host) return m.portal_host;
+      var blob = [
+        m.titre_rncp, m.titre, m.formation, m.code_rncp,
+        m.intitule_bloc, m.organisme_certificateur
+      ].filter(Boolean).join(' ');
+      // Patterns ordonnés par spécificité : codes RNCP officiels d'abord, puis sigles internes, puis texte
+      var PATTERNS = [
+        // Codes RNCP officiels (sources de vérité quand présents)
+        { rx: /\b38438\b/,                                    host: 'cdrh-pac.vercel.app' },
+        { rx: /\b38504\b/,                                    host: 'msmc-pac.vercel.app' },
+        // CDRH — Chargé(e) des Ressources Humaines
+        { rx: /\bCDRH\b/i,                                    host: 'cdrh-pac.vercel.app' },
+        { rx: /\bcharg[eé]\b.{0,30}\bressources?\s+humaines?\b/i, host: 'cdrh-pac.vercel.app' },
+        // MMD — Master Marketing Digital
+        { rx: /\bMMD\b/i,                                     host: 'mmd-pac.vercel.app'  },
+        { rx: /\bmarketing\s+digital\b/i,                     host: 'mmd-pac.vercel.app'  },
+        // MDO — Master Direction des Organisations
+        { rx: /\bMDO\b/i,                                     host: 'mdo-pac.vercel.app'  },
+        { rx: /\bdirection\b.{0,20}\borganisation/i,          host: 'mdo-pac.vercel.app'  },
+        // REDA — Bachelor REDA
+        { rx: /\bREDA\b|\bBACH\s*REDA\b/i,                    host: 'reda-pac.vercel.app' },
+        // MSMC — Marketing Stratégique et Management Commercial
+        { rx: /\bMSMC\b/i,                                    host: 'msmc-pac.vercel.app' },
+        { rx: /\bmarketing\s+strat[eé]gique\b/i,              host: 'msmc-pac.vercel.app' },
+        { rx: /\bmanagement\s+commercial\b/i,                 host: 'msmc-pac.vercel.app' },
+        // Filet de sécurité texte large : "ressources humaines" sans préciser le niveau (peut tomber sur CDRH par défaut)
+        { rx: /\bressources?\s+humaines?\b/i,                 host: 'cdrh-pac.vercel.app' },
+      ];
+      for (var i = 0; i < PATTERNS.length; i++) {
+        if (PATTERNS[i].rx.test(blob)) return PATTERNS[i].host;
+      }
+      return 'msmc-pac.vercel.app'; // défaut sûr
+    }
+    var INJECT_BLOC_ID     = bloc;
+    var INJECT_PORTAL_HOST = inferPortalHost(spec);
+    console.log('[generator] portal_host inféré:', INJECT_PORTAL_HOST, '· bloc:', INJECT_BLOC_ID);
     var missing = [];
     for (var i = 0; i < FIXED.length; i++) {
       try {
         var r = await fetch('template/' + FIXED[i]);
         if (!r.ok) { missing.push(FIXED[i]); continue; }
-        zip.file(FIXED[i], await r.text());
+        var isBinary = /\.(png|jpg|jpeg|gif|webp)$/i.test(FIXED[i]);
+        if (isBinary) { zip.file(FIXED[i], await r.arrayBuffer()); continue; }
+        var content = await r.text();
+        if (FIXED[i] === 'api/send-portfolio.js') {
+          content = content
+            .replace(/__BLOC_ID__/g, INJECT_BLOC_ID)
+            .replace(/__PORTAL_HOST__/g, INJECT_PORTAL_HOST);
+        }
+        zip.file(FIXED[i], content);
       } catch (e) { missing.push(FIXED[i]); }
     }
 
@@ -709,25 +1151,31 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
     zip.file('app-livrable.jsx',  S.files['app-livrable.jsx']);
     zip.file('app-assistant.jsx', S.files['app-assistant.jsx']);
     zip.file('spec.json',         JSON.stringify(spec, null, 2));
+    var blocUpper = bloc.toUpperCase(); // pour affichage UI : "BC1" plutôt que "bc1"
     zip.file('README.md',
-      '# PAC ' + spec.meta.bloc + ' — ' + spec.meta.intitule_bloc + '\n\n'
+      '# PAC ' + blocUpper + ' — ' + spec.meta.intitule_bloc + '\n\n'
       + spec.meta.titre_rncp + '\n\n'
       + '## Déploiement\n'
       + '1. Créer le repo `lumio-' + bloc + '` avec **tout le contenu de ce ZIP**.\n'
       + '2. `git push` → connecter le repo à Vercel.\n'
-      + '3. Variables Vercel : `ANTHROPIC_API_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`.\n\n'
+      + '3. Variables Vercel : `ANTHROPIC_API_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `RESEND_API_KEY`.\n'
+      + '   (option `PORTFOLIO_FROM` = expéditeur vérifié sur Resend, ex. "Éminéo PAC <portfolio@emineo.fr>").\n\n'
       + '## À compléter (contenu narratif)\n'
       + 'Le runtime tourne immédiatement, mais le contenu des apps chrome (emails, PDF, presse) est encore générique.\n'
       + 'Remplacer dans `data.js` toutes les balises `[À COMPLÉTER]` par le contenu réel du bloc.\n'
       + 'Les placeholders `{{PRENOM}} {{NOM}} {{EMAIL_ETUDIANT}}` sont substitués automatiquement à la connexion.\n'
       + (missing.length ? '\n⚠️ Fichiers template manquants (à ajouter au repo générateur dans `template/`) : ' + missing.join(', ') + '\n' : '')
     );
-    if (missing.length) ss(3, '⚠ ' + missing.length + ' fichier(s) template manquant(s) — voir README. ZIP incomplet.', 'error');
+    if (missing.length) {
+      ss(3, '❌ ' + missing.length + ' fichier(s) runtime manquant(s) : ' + missing.join(', ') + '. ZIP ANNULÉ — déploiement impossible.', 'error');
+      btn.disabled = false; btn.innerHTML = '⬇ Télécharger le ZIP';
+      return;
+    }
 
     var blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'PAC-' + spec.meta.bloc + '-' + spec.meta.titre_rncp.replace(/\s+/g, '-') + '.zip';
+    a.download = 'PAC-' + blocUpper + '-' + spec.meta.titre_rncp.replace(/\s+/g, '-') + '.zip';
     a.click();
     URL.revokeObjectURL(a.href);
     ss(3, '✅ ZIP téléchargé.', 'info');
@@ -739,23 +1187,332 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
 //  BUILDERS spec → code
 // ═══════════════════════════════════════════════════════════
 function buildData(spec) {
-  var bloc  = spec.meta.bloc;
+  var bloc  = normalizeBlocId(spec.meta.bloc);
   var cmd   = spec.commanditaire || { nom: 'Le commanditaire', role: 'Commanditaire' };
   var mn    = spec.moment_narratif || {};
-  var slug  = (cmd.nom || 'contact').toLowerCase().split(' ')[0].replace(/[^a-z0-9]/g, '');
+  var titreRncp = spec.meta.titre_rncp || '';
 
-  // ── Documents fictifs → objets structurés (contenu = placeholder explicite à compléter) ──
-  var documents = (spec.documents_fictifs || []).map(function(d) {
-    return {
-      id: d.id, acte: d.acte, type: d.type,
-      expediteur: d.expediteur || cmd.nom,
-      objet: d.objet || '',
-      role_narratif: d.role_narratif || '',
-      body: '[À COMPLÉTER — ' + (d.role_narratif || d.type) + ']'
+  // ── HELPERS ─────────────────────────────────────────────────
+  // Initiales : "Sonia Ferracci" → "SF" · "Théo Marczak" → "TM" · "Jakob" → "J"
+  function initials(name) {
+    return String(name || '?').trim().split(/\s+/).map(function(w){ return w.charAt(0); }).join('').toUpperCase().slice(0, 2) || '?';
+  }
+  // Slug email : "Sonia Ferracci" → "sonia.ferracci"
+  function emailSlug(name) {
+    return String(name || 'contact').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, '').trim().split(/\s+/).slice(0, 2).join('.');
+  }
+  // Inférence d'un domaine entreprise depuis le titre RNCP (Lumio par défaut pour MSMC/CDRH historique)
+  function inferCompanyDomain() {
+    return 'lumio-health.com';
+  }
+  function inferWorkspaceName() {
+    return 'Lumio Health';
+  }
+  var DOMAIN = inferCompanyDomain();
+
+  // Palette accents (déterministe, varie par acte pour visuel) — éminéo-cohérent
+  var ACCENTS = ['#134547', '#1b4f8a', '#1a6641', '#c4420f', '#5b3a8a', '#7a756c'];
+
+  // Routage type document → collection cible (mailbox / dossiers.deck / dossiers.rich / notes)
+  function routeDocument(doc, idx) {
+    var t = String(doc.type || '').toLowerCase();
+    var accent = ACCENTS[idx % ACCENTS.length];
+    var who = doc.expediteur || cmd.nom;
+    var date = mn.date_fictive || '';
+
+    // ─ EMAIL ─
+    if (/email|courriel|message[s]?\b/.test(t)) {
+      var emailShape = {
+        id: doc.id || ('mail_' + (idx + 1)),
+        from: who, fromEmail: emailSlug(who) + '@' + DOMAIN,
+        subject: doc.objet || '[À COMPLÉTER — sujet]',
+        date: date,
+        preview: '[À COMPLÉTER — preview, 1 phrase] · ' + (doc.role_narratif || ''),
+        body: '[À COMPLÉTER — corps de l\'email]\n\n' + (doc.role_narratif ? '(Rôle narratif : ' + doc.role_narratif + ')\n\n' : '') + '— ' + who,
+        avatar: initials(who), avatarColor: accent,
+        unread: idx === 0, flagged: doc.acte <= 2,
+        tags: doc.acte === 1 ? ['Mission'] : undefined
+      };
+      if (doc.generated) {
+        if (doc.generated.subject) emailShape.subject = doc.generated.subject;
+        if (doc.generated.body)    emailShape.body    = doc.generated.body;
+        if (doc.generated.preview) emailShape.preview = doc.generated.preview;
+      }
+      return { collection: 'mailbox', shape: emailShape };
+    }
+    // ─ NOTE / MÉMO / VERBATIM ─ (formats courts, sans pagination)
+    if (/note[s]?|m[eé]mo|verbatim|alerte/.test(t)) {
+      var noteShape = {
+        id: doc.id || ('note_' + (idx + 1)),
+        title: doc.objet || '[À COMPLÉTER — titre note]',
+        date: date,
+        preview: '[À COMPLÉTER — preview]',
+        kicker: (doc.type || 'NOTE').toUpperCase(),
+        render: 'plain',
+        body: '[À COMPLÉTER — corps de la note]\n\n' + (doc.role_narratif ? '(Rôle narratif : ' + doc.role_narratif + ')' : ''),
+        byline: who + ' · ' + date
+      };
+      if (doc.generated) {
+        if (doc.generated.title)   noteShape.title   = doc.generated.title;
+        if (doc.generated.body)    noteShape.body    = doc.generated.body;
+        if (doc.generated.kicker)  noteShape.kicker  = doc.generated.kicker;
+        if (doc.generated.preview) noteShape.preview = doc.generated.preview;
+      }
+      return { collection: 'notes', shape: noteShape };
+    }
+    // ─ DECK / PRÉSENTATION / PROPOSITION COMMERCIALE ─
+    if (/deck|pr[eé]sentation|board|proposition|pitch|slide/.test(t)) {
+      var deckShape = {
+        id: doc.id || ('deck_' + (idx + 1)),
+        type: 'deck',
+        tab: (doc.type || 'DECK').split(/\s+/)[0].toUpperCase().slice(0, 8),
+        title: doc.objet || '[À COMPLÉTER — titre deck]',
+        subtitle: doc.role_narratif || '',
+        date: date,
+        accent: accent,
+        confidential: doc.acte >= 3 ? 'CONFIDENTIEL' : '',
+        slides: [
+          { titre: 'Contexte', contenu: '[À COMPLÉTER — slide 1, contexte et enjeu]' },
+          { titre: 'Constats', contenu: '[À COMPLÉTER — slide 2, données et constats]' },
+          { titre: 'Recommandations', contenu: '[À COMPLÉTER — slide 3, recommandations chiffrées]', callout: '[À COMPLÉTER — point d\'attention si pertinent]' }
+        ]
+      };
+      if (doc.generated) {
+        if (doc.generated.title)    deckShape.title    = doc.generated.title;
+        if (doc.generated.subtitle) deckShape.subtitle = doc.generated.subtitle;
+        if (Array.isArray(doc.generated.slides) && doc.generated.slides.length) {
+          deckShape.slides = doc.generated.slides;
+        }
+      }
+      return { collection: 'dossiers', shape: deckShape };
+    }
+    // ─ TOUT LE RESTE → dossier RICH (rapports, dossiers, bulletins, tableaux, comptes-rendus, etc.) ─
+    var richShape = {
+      id: doc.id || ('doc_' + (idx + 1)),
+      type: 'rich',
+      tab: (doc.type || 'DOC').split(/\s+/)[0].toUpperCase().slice(0, 8),
+      title: doc.objet || '[À COMPLÉTER — titre dossier]',
+      accent: accent,
+      runningHead: (doc.type || '').toUpperCase().slice(0, 24),
+      pages: [{
+        kicker: (doc.type || 'DOCUMENT').toUpperCase(),
+        title: doc.objet || '[À COMPLÉTER]',
+        byline: who + ' · ' + date,
+        blocks: [
+          { type: 'p', text: '[À COMPLÉTER — paragraphe d\'introduction]' },
+          { type: 'h2', text: 'Éléments clés' },
+          { type: 'p', text: '[À COMPLÉTER — corps du document]' },
+          doc.role_narratif ? { type: 'callout', text: 'Rôle narratif : ' + doc.role_narratif } : null
+        ].filter(Boolean)
+      }]
     };
+    if (doc.generated) {
+      if (doc.generated.title) richShape.title = doc.generated.title;
+      if (Array.isArray(doc.generated.pages) && doc.generated.pages.length) {
+        richShape.pages = doc.generated.pages;
+      }
+    }
+    return { collection: 'dossiers', shape: richShape };
+  }
+
+  // ── COLLECTIONS dérivées des documents_fictifs ─────────────
+  var collections = { mailbox: [], dossiers: [], notes: [] };
+  (spec.documents_fictifs || []).forEach(function(doc, i) {
+    var r = routeDocument(doc, i);
+    collections[r.collection].push(r.shape);
   });
 
-  // ── Compétences mappées au schéma lu par app-livrable ──
+  // Garde-fou : si une collection critique reste vide, injecter au moins 1 item placeholder
+  if (collections.mailbox.length === 0) {
+    collections.mailbox.push({
+      id: 'mail_brief', from: cmd.nom, fromEmail: emailSlug(cmd.nom) + '@' + DOMAIN,
+      subject: mn.titre_affaire || ('Mission ' + bloc.toUpperCase()),
+      date: mn.date_fictive || '', preview: mn.enjeu_central || '[À COMPLÉTER — preview]',
+      body: '{{PRENOM}},\n\n' + (mn.situation || '[À COMPLÉTER — situation]') + '\n\nEnjeu : ' + (mn.enjeu_central || '[À COMPLÉTER — enjeu]') + '\n\n— ' + cmd.nom + '\n' + (cmd.role || ''),
+      avatar: initials(cmd.nom), avatarColor: '#134547', unread: true, flagged: true, tags: ['Mission']
+    });
+  }
+  if (collections.notes.length === 0) {
+    collections.notes.push({
+      id: 'note_terrain', title: '[À COMPLÉTER — verbatim terrain]', date: mn.date_fictive || '',
+      preview: '[À COMPLÉTER]', kicker: 'TERRAIN', render: 'plain',
+      body: '[À COMPLÉTER — note de terrain]', byline: '[À COMPLÉTER — auteur] · ' + (mn.date_fictive || '')
+    });
+  }
+
+  // ── GUIDE : tips dérivés des compétences ─────────────────
+  var guide = {
+    title: 'Guide de mission · ' + (spec.meta.intitule_bloc || bloc.toUpperCase()),
+    intro: 'Ce guide est là si tu te sens bloqué. Il ne donne pas les réponses — il indique où chercher.',
+    tips: (spec.competences || []).slice(0, 6).map(function(c) {
+      return { titre: c.code + ' — ' + c.label, body: c.conseil || '[À COMPLÉTER — conseil]' };
+    }),
+    footer: 'Ce guide est disponible à tout moment via le bouton ? en bas à gauche du desktop.'
+  };
+
+  // ── FINDER : arborescence par acte ────────────────────────
+  function makeFinderItem(doc, route) {
+    var label = (doc.objet || doc.type || 'document').split(/\s+/).slice(0, 4).join(' ');
+    return {
+      kind: route.collection === 'mailbox' ? 'mail' : (route.shape.type === 'deck' ? 'deck' : (route.collection === 'notes' ? 'note' : 'pdf')),
+      name: label,
+      app: route.collection === 'mailbox' ? 'mail' : (route.collection === 'notes' ? 'notes' : 'pdf'),
+      props: { docId: route.shape.id }
+    };
+  }
+  var folders = {
+    guide: { title: 'Guide', sidebar: '⌘ Guide', icon: '📕', items: [{ kind: 'pdf', name: 'Guide de mission', app: 'pdf', props: {} }] }
+  };
+  var folderOrder = ['guide'];
+  [1, 2, 3, 4, 5].forEach(function(acte) {
+    var docsActe = (spec.documents_fictifs || []).filter(function(d){ return d.acte === acte; });
+    if (docsActe.length === 0) return;
+    var items = docsActe.map(function(d) {
+      var idx = (spec.documents_fictifs || []).indexOf(d);
+      return makeFinderItem(d, routeDocument(d, idx));
+    });
+    var fId = 'acte' + acte;
+    folders[fId] = { title: 'Acte ' + acte, sidebar: 'Acte ' + acte, icon: '📁', items: items };
+    folderOrder.push(fId);
+  });
+  // Portraits — personnages Lumio Health · invariant entre tous les titres
+  folders['portraits'] = {
+    title: 'Portraits équipe', sidebar: 'Portraits', icon: '🪪',
+    items: [
+      { kind: 'html', name: 'Théo Marczak — CEO',               app: 'browser', props: { url: 'portraits/portrait_theo_marczak.html' } },
+      { kind: 'html', name: 'Sonia Ferracci — Dir. Marketing',  app: 'browser', props: { url: 'portraits/portrait_sonia_ferracci.html' } },
+      { kind: 'html', name: 'Camille Ott — Partenariats B2B',   app: 'browser', props: { url: 'portraits/portrait_camille_ott.html' } },
+      { kind: 'html', name: 'Yassine Morel — Content Manager',  app: 'browser', props: { url: 'portraits/portrait_yassine_morel.html' } },
+      { kind: 'html', name: 'Jakob Rein — Northgate Capital',   app: 'browser', props: { url: 'portraits/portrait_jakob_rein.html'     } }
+    ]
+  };
+  folderOrder.push('portraits');
+  var finder = { folders: folders, order: folderOrder };
+
+  // ── CALENDAR : généré depuis la date fictive (durée 18 j par convention PAC) ──
+  function inferMonthLabel(dateStr) {
+    var months = { janvier: 'Janvier', fevrier: 'Février', 'février': 'Février', mars: 'Mars', avril: 'Avril', mai: 'Mai', juin: 'Juin', juillet: 'Juillet', aout: 'Août', 'août': 'Août', septembre: 'Septembre', octobre: 'Octobre', novembre: 'Novembre', decembre: 'Décembre', 'décembre': 'Décembre' };
+    var s = String(dateStr || '').toLowerCase();
+    // Mot-clé mois avec \b (évite "mardi" → "mars")
+    for (var k in months) {
+      var rx = new RegExp('\\b' + k + '\\b', 'i');
+      if (rx.test(s)) return months[k];
+    }
+    // Format ISO YYYY-MM-DD → numéro de mois
+    var iso = s.match(/(\d{4})-(\d{2})-\d{2}/);
+    if (iso) {
+      var names = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+      var idx = parseInt(iso[2], 10) - 1;
+      if (idx >= 0 && idx < 12) return names[idx];
+    }
+    return '';
+  }
+  function inferStartDay(dateStr) {
+    var s = String(dateStr || '');
+    // Format ISO YYYY-MM-DD → prendre le DD
+    var iso = s.match(/^\d{4}-\d{2}-(\d{1,2})/);
+    if (iso) return parseInt(iso[1], 10);
+    // Format français : premier nombre 1-2 chiffres NON suivi d'un autre chiffre
+    // (évite que "2025" soit lu comme "20" sur "12 mai 2025" — pas un risque ici car "12" matche en premier, mais sécurité)
+    var m = s.match(/\b(\d{1,2})\b(?!\d)/);
+    return m ? parseInt(m[1], 10) : 1;
+  }
+  var startDay = inferStartDay(mn.date_fictive);
+  var calendar = {
+    monthLabel: inferMonthLabel(mn.date_fictive),
+    todayLabel: 'Jour 1 / 18',
+    countdownLabel: 'AVANT ÉCHÉANCE',
+    startDay: startDay,
+    daysInMonth: 31,
+    startOffset: 0,
+    deadlineDay: Math.min(startDay + 17, 31),
+    boardDay: null,
+    legend: [
+      { label: 'Réunion', color: '#3a7bd5' },
+      { label: 'Production', color: '#c4420f' },
+      { label: 'Échéance', color: '#a83232' }
+    ],
+    events: (function() {
+      var e = {};
+      e[startDay] = [{ label: 'Kick-off · ' + (mn.titre_affaire || 'Mission'), bg: '#3a7bd5', color: '#fff', bold: true }];
+      e[Math.min(startDay + 17, 31)] = [{ label: 'Livrable final', bg: '#a83232', color: '#fff', bold: true }];
+      return e;
+    })(),
+    footer: '<em>1 jour fictif ≈ 11 minutes réelles · ratio ×74</em>'
+  };
+
+  // ── SLACK : workspace + 1 channel + DM du commanditaire ──
+  var slackSeed = [
+    { from: cmd.nom, avatar: initials(cmd.nom), color: '#134547', time: '08:32', text: '{{PRENOM}} — Bienvenue. ' + (mn.enjeu_central || 'Tu as les documents, regarde et reviens vers moi.') }
+  ];
+  if (spec._enriched && spec._enriched.slackSeed && Array.isArray(spec._enriched.slackSeed.messages)) {
+    slackSeed = spec._enriched.slackSeed.messages.map(function(m) {
+      return { from: cmd.nom, avatar: initials(cmd.nom), color: '#134547', time: m.time || '08:32', text: m.text || '' };
+    });
+  }
+  var slack = {
+    workspace: inferWorkspaceName(),
+    channels: [
+      { id: 'general', name: 'general' },
+      { id: 'projet-' + bloc, name: 'projet-' + bloc }
+    ],
+    dms: [
+      { id: 'commanditaire', name: cmd.nom, avatar: initials(cmd.nom), color: '#134547', status: 'online', isCommanditaire: true }
+    ],
+    seed: { 'commanditaire': slackSeed }
+  };
+  var slackPrompts = {
+    commanditaire: 'Tu es ' + cmd.nom + ', ' + (cmd.role || 'commanditaire') + ' chez ' + inferWorkspaceName() + '. '
+      + 'Tu réponds à {{PRENOM}}, consultant·e externe sur la mission "' + (mn.titre_affaire || '') + '". '
+      + 'Tu évalues sans expliquer, tu relances sans donner la réponse, tu simules la pression hiérarchique. '
+      + 'Tu réponds en 2-3 messages courts séparés par ---SPLIT---. Pas de longs développements.',
+    commanditaireLivrable: 'Tu es ' + cmd.nom + '. Tu viens de recevoir le livrable de {{PRENOM}}. '
+      + 'Tu réagis en 2-3 messages courts séparés par ---SPLIT---. Tu pointes ce qui te paraît juste et ce qui te paraît faible, sans expliquer comment corriger.'
+  };
+
+  // ── PRESS (déjà au bon schéma) — surchargé par spec._enriched si disponible ──
+  var pressArticles = [{
+    id: 'a1', source: 'Presse pro', host: 'presse-pro.fr', url: 'presse-pro.fr/article',
+    author: '[À COMPLÉTER — auteur]', date: mn.date_fictive || '',
+    headline: '[À COMPLÉTER — titre article]', lede: '[À COMPLÉTER — chapeau]',
+    illustration: 'PHOTO ILLUSTRATIVE', body: '[À COMPLÉTER — article complet]'
+  }];
+  if (spec._enriched && spec._enriched.pressArticle) {
+    var ep = spec._enriched.pressArticle;
+    pressArticles = [{
+      id: 'a1',
+      source: ep.source || 'Presse pro',
+      host: ep.host || 'presse-pro.fr',
+      url: ep.url || ((ep.host || 'presse-pro.fr') + '/article'),
+      author: ep.author || '',
+      date: ep.date || mn.date_fictive || '',
+      headline: ep.headline || '',
+      lede: ep.lede || '',
+      illustration: 'PHOTO ILLUSTRATIVE',
+      body: ep.body || ''
+    }];
+  }
+  var fausseUne = {
+    source: 'Le Quotidien', host: 'lequotidien.fr', rubrique: 'Économie & Entreprises',
+    kicker: '[À COMPLÉTER]', date: mn.date_fictive || '',
+    headline: '[À COMPLÉTER — titre Une]', chapeau: '[À COMPLÉTER — chapeau de Une]',
+    body: '[À COMPLÉTER — corps de Une]'
+  };
+  if (spec._enriched && spec._enriched.fausseUne) {
+    var eu = spec._enriched.fausseUne;
+    fausseUne = {
+      source: eu.source || fausseUne.source,
+      host: eu.host || fausseUne.host,
+      rubrique: eu.rubrique || fausseUne.rubrique,
+      kicker: eu.kicker || '',
+      date: eu.date || mn.date_fictive || '',
+      headline: eu.headline || '',
+      chapeau: eu.chapeau || '',
+      body: eu.body || ''
+    };
+  }
+
+  // ── PAC_CONFIG : actes + compétences + jury ───────────────
   var competences = (spec.competences || []).map(function(c) {
     return {
       code: c.code, label: c.label,
@@ -764,20 +1521,16 @@ function buildData(spec) {
       min: c.min_mots || 80, motsCles: c.mots_cles || [], conseil: c.conseil || ''
     };
   });
-
-  // ── Actes : structure PAC standard (5 actes / 210 min) ──
   var temps = [
-    { n: 1, label: 'Ancrage terrain',        debut: 0,   fin: 20,  couleur: '#7a756c' },
-    { n: 2, label: "Entrée dans l'affaire",  debut: 20,  fin: 50,  couleur: '#1b4f8a' },
-    { n: 3, label: 'Diagnostic',             debut: 50,  fin: 95,  couleur: '#1a6641' },
-    { n: 4, label: 'Production',             debut: 95,  fin: 175, couleur: '#c4420f' },
-    { n: 5, label: 'Réflexion',              debut: 175, fin: 210, couleur: '#7a756c' }
+    { n: 1, label: 'Ancrage terrain',       debut: 0,   fin: 20,  couleur: '#7a756c' },
+    { n: 2, label: "Entrée dans l'affaire", debut: 20,  fin: 50,  couleur: '#1b4f8a' },
+    { n: 3, label: 'Diagnostic',            debut: 50,  fin: 95,  couleur: '#1a6641' },
+    { n: 4, label: 'Production',            debut: 95,  fin: 175, couleur: '#c4420f' },
+    { n: 5, label: 'Réflexion',             debut: 175, fin: 210, couleur: '#7a756c' }
   ];
-
-  // ── Prompt jury (utilisé par app-livrable générique) ──
   var crit = (spec.jury_criteres_eliminatoires || []).map(function(c) { return '- ' + c; }).join('\n');
   var efmt = (spec.competences || []).map(function(c) { return '### ' + c.code + ' — [Satisfaisant / Insuffisant / Absent]\nUne phrase de retour précise et exigeante.'; }).join('\n\n');
-  var juryPrompt = 'Tu es le jury certifiant du bloc ' + bloc + ' (' + (spec.meta.titre_rncp || '') + ').\n'
+  var juryPrompt = 'Tu es le jury certifiant du bloc ' + bloc + ' (' + titreRncp + ').\n'
     + 'Contexte : ' + (mn.titre_affaire || '') + ' · ' + (mn.date_fictive || '') + '.\n'
     + 'Tu évalues une production étudiante aux critères RNCP stricts. Sois exigeant mais juste.\n'
     + 'Critères éliminatoires :\n' + crit + '\n\n'
@@ -786,40 +1539,21 @@ function buildData(spec) {
     + '\n\n## Niveau global\n**[Non conforme / Partiellement conforme / Conforme / Conforme avec distinction]**\n\n'
     + '## Question de jury\nUne question dérangeante que tu poserais à l\'oral.';
 
-  // ── LUMIO_DATA : toutes les clés lues par le runtime (aucune absente → aucun crash) ──
+  // ── LUMIO_DATA : schéma canonique aligné sur les apps template/ ──
   var data = {
     student: { name: '{{PRENOM}} {{NOM}}', role: 'Consultant·e externe', email: '{{EMAIL_ETUDIANT}}', company: 'Indépendant·e', initial: '?' },
-    contexte: {
-      title: 'Fiche contexte — Lumio Health',
-      subtitle: 'À lire en premier si vous découvrez l\'univers',
-      body: mn.situation || '[À COMPLÉTER — contexte Lumio pour ce bloc]'
-    },
-    briefEmail: {
-      from: cmd.nom, fromEmail: slug + '@lumio-health.com',
-      subject: mn.titre_affaire || ('Mission — ' + bloc),
-      date: mn.date_fictive || '',
-      body: '{{PRENOM}},\n\n' + (mn.situation || '') + '\n\nEnjeu : ' + (mn.enjeu_central || '') + '\n\n— ' + cmd.nom + '\n' + (cmd.role || '')
-    },
-    jakobEmail: {
-      from: cmd.nom, to: '{{PRENOM}} {{NOM}}', subject: mn.titre_affaire || '', date: mn.date_fictive || '',
-      tag: 'CONFIDENTIEL',
-      body: '[À COMPLÉTER — email confidentiel : ' + (mn.enjeu_central || '') + ']'
-    },
-    theoNote: { title: 'Note interne', date: mn.date_fictive || '', body: '[À COMPLÉTER — note interne confidentielle]' },
-    deckBoard: { title: 'Présentation', pages: [{ titre: '[À COMPLÉTER]', body: '[À COMPLÉTER — slides]' }] },
-    yassineVeille: { title: 'Veille concurrentielle', date: mn.date_fictive || '', body: '[À COMPLÉTER — veille]' },
-    camilleVerbatims: [{ id: 'v1', auteur: 'Terrain', duree: '0:45', transcript: '[À COMPLÉTER — verbatim terrain]' }],
-    pressArticles: [{ id: 'a1', media: 'Presse', titre: '[À COMPLÉTER]', date: mn.date_fictive || '', body: '[À COMPLÉTER — article]' }],
-    fausseUne: { media: 'Une fictive', titre: '[À COMPLÉTER]', date: mn.date_fictive || '', body: '[À COMPLÉTER]' },
-    documents: documents,
-    slackMessages: {
-      initial: [
-        { from: cmd.nom, time: '08:32', text: '{{PRENOM}} — ' + (mn.enjeu_central || 'on en parle ?'), read: true }
-      ],
-      delayed: [
-        { from: cmd.nom, time: '+15min', text: '{{PRENOM}}, dès que tu as une hypothèse solide, envoie-la moi ici.', channel: 'DM' }
-      ]
-    }
+    mailbox: collections.mailbox,
+    dossiers: collections.dossiers,
+    notes: collections.notes,
+    guide: guide,
+    notepad: { title: 'Mes notes — mission', placeholder: 'Tes pensées au fil de l\'eau pendant que tu lis le dossier.' },
+    finder: finder,
+    calendar: calendar,
+    trash: { title: 'La corbeille est vide.', body: "Mais l'idée est bonne. La plupart des consultants commencent par jeter quelque chose." },
+    slack: slack,
+    slackPrompts: slackPrompts,
+    pressArticles: pressArticles,
+    fausseUne: fausseUne
   };
 
   var cfg = {
@@ -828,8 +1562,8 @@ function buildData(spec) {
     epreuve: spec.meta.epreuve,
     deadline: (mn.date_fictive || '') + ' · 18h00',
     commanditaire: cmd.nom,
+    entreprise: inferWorkspaceName(),
     dispositif: 'PAC',
-    accroche: spec.meta.accroche || '',
     note_reflexive: !!spec.meta.note_reflexive,
     temps: temps,
     competences: competences,
@@ -841,19 +1575,21 @@ function buildData(spec) {
   };
 
   return '// ══════════════════════════════════════════════════════════════\n'
-    + '//  DATA · PAC ' + bloc + ' · ' + spec.meta.titre_rncp + '\n'
+    + '//  DATA · PAC ' + bloc.toUpperCase() + ' · ' + titreRncp + '\n'
     + '//  ' + (mn.titre_affaire || '') + ' · ' + (mn.date_fictive || '') + '\n'
+    + '//  Schéma : mailbox[] · dossiers[] · notes[] · guide · finder · calendar · slack\n'
     + '//  ⚠️  Remplacer les [À COMPLÉTER] par le contenu narratif réel du bloc.\n'
     + '//  ⚠️  Les placeholders {{PRENOM}} {{NOM}} {{EMAIL_ETUDIANT}} sont substitués à la connexion.\n'
     + '// ══════════════════════════════════════════════════════════════\n\n'
     + 'window.LUMIO_DATA = ' + JSON.stringify(data, null, 2) + ';\n\n'
     + 'window.PAC_CONFIG = ' + JSON.stringify(cfg, null, 2) + ';\n'
-    + '// Alias de compatibilité (les apps existantes lisent encore PASS_CONFIG)\n'
+    + '// Alias de compatibilité\n'
     + 'window.PASS_CONFIG = window.PAC_CONFIG;\n';
 }
 
+
 function buildLivrable(spec) {
-  var bloc = spec.meta.bloc;
+  var bloc = normalizeBlocId(spec.meta.bloc); // normalisé : "1" → "bc1"
   var head = '// ══════════════════════════════════════════════════════════════\n'
     + '//  LIVRABLE APP · PAC ' + bloc + ' · ' + spec.meta.titre_rncp + '\n'
     + '//  Composant générique — lit tout depuis window.PAC_CONFIG (competences, juryPrompt).\n'
@@ -871,6 +1607,7 @@ function buildLivrable(spec) {
 '  const [sending, setSending] = useLivState(false);',
 '  const [verdict, setVerdict] = useLivState("");',
 '  const [err, setErr] = useLivState("");',
+'  const [sent, setSent] = useLivState("");',
 '',
 '  const set = (code, v) => setAnswers(a => ({ ...a, [code]: v }));',
 '  const totalMots = comps.reduce((n, c) => n + _wc(answers[c.code]), 0) + _wc(reflexive);',
@@ -885,7 +1622,7 @@ function buildLivrable(spec) {
 '      const resp = await fetch("/api/chat", {',
 '        method: "POST", headers: { "Content-Type": "application/json" },',
 '        body: JSON.stringify({',
-'          model: "claude-sonnet-4-6", max_tokens: 1200,',
+'          model: "' + PAC_MODELS.JURY + '", max_tokens: 1200,',
 '          system: cfg.juryPrompt || "Tu es le jury. Évalue la production.",',
 '          messages: [{ role: "user", content: "Voici la production à évaluer :\\n\\n" + prod }]',
 '        })',
@@ -897,6 +1634,25 @@ function buildLivrable(spec) {
 '      if (window.__onLivrableSubmitted) window.__onLivrableSubmitted(answers, reflexive, txt);',
 '    } catch (e) { setErr(e.message); }',
 '    setSending(false);',
+'  };',
+'',
+'  const sendPortfolio = async () => {',
+'    const stu = (window.LUMIO_DATA && window.LUMIO_DATA.student) || {};',
+'    if (!stu.email) { setSent("Aucun email étudiant."); return; }',
+'    setSent("envoi…");',
+'    try {',
+'      const rows = comps.map(c => "<h3>" + c.code + " — " + c.label + "</h3><p style=\\"white-space:pre-wrap\\">" + ((answers[c.code] || "")) + "</p>").join("");',
+'      const refl = cfg.note_reflexive ? "<h3>Note réflexive</h3><p style=\\"white-space:pre-wrap\\">" + (reflexive || "") + "</p>" : "";',
+'      const html = "<div style=\\"font-family:sans-serif;max-width:640px;margin:auto\\"><h1>Portfolio de compétences</h1>" +',
+'        "<p><b>" + (stu.name || "") + "</b> · " + (cfg.dispositif || "PAC") + " " + cfg.bloc + " · " + (cfg.titre || "") + "</p>" +',
+'        rows + refl + "<hr><h2>Retour du jury</h2><p style=\\"white-space:pre-wrap\\">" + verdict + "</p></div>";',
+'      const resp = await fetch("/api/send-portfolio", {',
+'        method: "POST", headers: { "Content-Type": "application/json" },',
+'        body: JSON.stringify({ to: stu.email, studentName: stu.name, bloc: cfg.bloc, html })',
+'      });',
+'      if (!resp.ok) throw new Error("erreur " + resp.status);',
+'      setSent("✓ Portfolio envoyé à " + stu.email);',
+'    } catch (e) { setSent("Échec de l\'envoi (" + e.message + ")."); }',
 '  };',
 '',
 '  return (',
@@ -943,6 +1699,16 @@ function buildLivrable(spec) {
 '            {verdict}',
 '          </div>',
 '        ) : null}',
+'',
+'        {verdict ? (',
+'          <div style={{ marginTop: 16 }}>',
+'            <button onClick={sendPortfolio}',
+'              style={{ background: "#1a6641", color: "white", border: "none", borderRadius: 7, padding: "10px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>',
+'              ✉ Recevoir mon portfolio par email',
+'            </button>',
+'            {sent ? <div style={{ fontSize: 12, color: "var(--ink-mute)", marginTop: 8 }}>{sent}</div> : null}',
+'          </div>',
+'        ) : null}',
 '      </div>',
 '    </div>',
 '  );',
@@ -955,7 +1721,7 @@ function buildLivrable(spec) {
 }
 
 function buildAssistant(spec) {
-  var bloc = spec.meta.bloc;
+  var bloc = normalizeBlocId(spec.meta.bloc); // normalisé : "1" → "bc1"
   var head = '// ══════════════════════════════════════════════════════════════\n'
     + '//  JEFFERSON · PAC ' + bloc + '\n'
     + '//  Composant générique — guide par acte + chat. Lit window.PAC_CONFIG.\n'
@@ -993,7 +1759,7 @@ function buildAssistant(spec) {
 '      const name = (window.LUMIO_DATA && window.LUMIO_DATA.student && window.LUMIO_DATA.student.name) || "";',
 '      const resp = await fetch("/api/chat", {',
 '        method: "POST", headers: { "Content-Type": "application/json" },',
-'        body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 300, system: buildJeffersonPrompt(name, elapsed), messages: [{ role: "user", content: q }] })',
+'        body: JSON.stringify({ model: "' + PAC_MODELS.JEFFERSON + '", max_tokens: 300, system: buildJeffersonPrompt(name, elapsed), messages: [{ role: "user", content: q }] })',
 '      });',
 '      const data = await resp.json();',
 '      const txt = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("") || "…";',
