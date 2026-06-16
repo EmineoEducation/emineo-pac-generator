@@ -309,12 +309,19 @@ html,body{height:100%;font-family:'Inter',sans-serif;background:#F0EFEA;color:va
 // stable, utilisé pour : Redis (PAC_CONFIG.bloc, BLOC_ID, clé portail),
 // nom de repo (lumio-XXX), nom de fichier ZIP.
 // Règles :
-//   "BC1"  → "bc1"   (MSMC, conserve le préfixe explicite)
-//   "1"    → "bc1"   (CDRH numérote sans préfixe → on l'ajoute)
-//   "4-I"  → "bc4-i" (sous-bloc : préfixe seulement si commence par chiffre)
-//   ""/null → "bc"   (cas dégénéré, ne devrait jamais arriver après le gate)
+//   "BC1"      → "bc1"    (MSMC, conserve le préfixe explicite)
+//   "1"        → "bc1"    (CDRH numérote sans préfixe → on l'ajoute)
+//   "4-I"      → "bc4-i"  (sous-bloc : préfixe seulement si commence par chiffre)
+//   "Bloc 2"   → "bc2"    (MDO / MMD : le RACE intitule "Bloc N" → on retire le préfixe verbeux)
+//   "Bloc 4-I" → "bc4-i"  (idem avec sous-bloc)
+//   ""/null    → "bc"     (cas dégénéré, ne devrait jamais arriver après le gate)
 function normalizeBlocId(raw) {
-  var s = String(raw == null ? '' : raw).toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  var s = String(raw == null ? '' : raw).toLowerCase().trim();
+  // Préfixe "bloc " / "bloc-" / "bloc_" / "blocN" (RACE MDO/MMD) → retirer pour ne garder
+  // que le suffixe numérique ; le préfixe "bc" sera ajouté par la règle ci-dessous.
+  // Le lookahead exige un séparateur, un chiffre, ou la fin → épargne "blocage" et autres faux positifs.
+  s = s.replace(/^bloc(?=[\s\-_\d]|$)[\s\-_]*/i, '');
+  s = s.replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   if (/^\d/.test(s)) s = 'bc' + s; // préfixe si commence par un chiffre
   return s || 'bc';
 }
@@ -1112,6 +1119,7 @@ document.getElementById('btn-zip').addEventListener('click', async function() {
         // MDO — Master Direction des Organisations
         { rx: /\bMDO\b/i,                                     host: 'mdo-pac.vercel.app'  },
         { rx: /\bdirection\b.{0,20}\borganisation/i,          host: 'mdo-pac.vercel.app'  },
+        { rx: /\bdiriger\b.{0,20}\borganisation/i,            host: 'mdo-pac.vercel.app'  },
         // REDA — Bachelor REDA
         { rx: /\bREDA\b|\bBACH\s*REDA\b/i,                    host: 'reda-pac.vercel.app' },
         // MSMC — Marketing Stratégique et Management Commercial
